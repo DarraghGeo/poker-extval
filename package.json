@@ -1,0 +1,22 @@
+{
+  "name": "pokeman",
+  "version": "1.0.0",
+  "description": "Poker hand evaluator with comprehensive test suite",
+  "main": "evaluator.js",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "benchmark": "node benchmark.js"
+  },
+  "keywords": [
+    "poker",
+    "hand",
+    "evaluator"
+  ],
+  "author": "Darragh Geoghegan",
+  "license": "MIT",
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
+
