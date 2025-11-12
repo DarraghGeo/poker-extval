@@ -1,8 +1,13 @@
 {
-  "name": "pokeman",
+  "name": "poker-extval",
   "version": "1.0.0",
   "description": "Poker hand evaluator with comprehensive test suite",
   "main": "evaluator.js",
+  "files": [
+    "evaluator.js",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "test": "jest",
     "test:watch": "jest --watch",
@@ -11,10 +16,25 @@
   "keywords": [
     "poker",
     "hand",
-    "evaluator"
+    "evaluator",
+    "poker-hand",
+    "poker-evaluation",
+    "card-game",
+    "texas-holdem"
   ],
   "author": "Darragh Geoghegan",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DarraghGeo/poker-extval.git"
+  },
+  "bugs": {
+    "url": "https://github.com/DarraghGeo/poker-extval/issues"
+  },
+  "homepage": "https://github.com/DarraghGeo/poker-extval#readme",
+  "engines": {
+    "node": ">=12.0.0"
+  },
   "devDependencies": {
     "jest": "^29.7.0"
   }

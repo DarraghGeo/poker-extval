@@ -1,0 +1,41 @@
+# Test files
+*.test.js
+evaluator.test.js
+
+# Benchmark files
+benchmark.js
+
+# Development files
+.git/
+.gitignore
+.gitattributes
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Dependencies (already excluded by default, but explicit)
+node_modules/
+package-lock.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# Coverage and test results
+coverage/
+.nyc_output/
+.jest/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+

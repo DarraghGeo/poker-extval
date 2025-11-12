@@ -14,7 +14,7 @@ A comprehensive poker hand evaluation library for Node.js that evaluates poker h
 ## Installation
 
 ```bash
-npm install
+npm install poker-extval
 ```
 
 ## Usage
@@ -22,7 +22,7 @@ npm install
 ### Basic Usage
 
 ```javascript
-const { evaluateHand } = require('./evaluator');
+const { evaluateHand } = require('poker-extval');
 
 // Evaluate a 5-card hand
 const result = evaluateHand(['As', 'Ks', 'Qs', 'Js', 'Ts']);
@@ -41,7 +41,7 @@ console.log(result);
 ### Using the HandEvaluator Class
 
 ```javascript
-const { HandEvaluator } = require('./evaluator');
+const { HandEvaluator } = require('poker-extval');
 
 // Create an evaluator instance
 const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', 'Ts', '9s']);
