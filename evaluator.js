@@ -191,9 +191,15 @@ class HandEvaluator {
     this.isStraightDraw();
     this.isHighCard();
     
-    // Get the evaluation object and restore original
+    // Add keyCards and kickerCards before restoring original evaluation
+    // (these methods need access to this.evaluation)
     const evaluation = this.evaluation;
+    evaluation.keyCards = this.#getKeyCards();
+    evaluation.kickerCards = this.#getKickerCards();
+    
+    // Restore original evaluation
     this.evaluation = originalEvaluation;
+    
     return evaluation;
   }
 
@@ -963,6 +969,174 @@ class HandEvaluator {
     if (this.evaluation.isOpenEndedStraightDraw === undefined) this.isOpenEndedStraightDraw();
     if (this.evaluation.isInsideStraightDraw === undefined) this.isInsideStraightDraw();
     return this.evaluation.isStraightDraw = this.evaluation.isOpenEndedStraightDraw || this.evaluation.isInsideStraightDraw;
+  }
+
+  // ==================== KEY CARDS AND KICKER CARDS ====================
+  
+  /**
+   * Helper method to extract the 5 cards that form a straight.
+   * Handles both standard straights and wheel straights.
+   * 
+   * @private
+   * @returns {string[]} Array of 5 cards forming the straight, sorted from highest to lowest
+   */
+  #getStraightCards() {
+    // Try standard straight first
+    this.sort();
+    const gaps = this.#getGaps();
+    if (gaps.every(g => g === 1)) {
+      return [...this.cards].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    }
+    
+    // Try wheel straight
+    this.sortWheel();
+    const gapsWheel = this.#getGapsWheel();
+    if (gapsWheel.every(g => g === 1)) {
+      // Convert back to standard sorting for return
+      return [...this.cards].sort((a, b) => this.#getRankValueWheel(b) - this.#getRankValueWheel(a));
+    }
+    
+    return [];
+  }
+
+  /**
+   * Helper method to extract the 4 cards that form a straight draw.
+   * Handles both standard and wheel straight draws.
+   * 
+   * @private
+   * @returns {string[]} Array of 4 cards forming the draw, sorted from highest to lowest
+   */
+  #getStraightDrawCards() {
+    // Try standard straight draw
+    this.sort();
+    const firstFour = this.cards.slice(0, 4);
+    const lastFour = this.cards.slice(1, 5);
+    
+    const firstFourDist = this.getDistance(firstFour);
+    if (firstFourDist === 3 || firstFourDist === 4) {
+      return [...firstFour].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    }
+    const lastFourDist = this.getDistance(lastFour);
+    if (lastFourDist === 3 || lastFourDist === 4) {
+      return [...lastFour].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    }
+    
+    // Try wheel straight draw
+    this.sortWheel();
+    const firstFourWheel = this.cards.slice(0, 4);
+    const lastFourWheel = this.cards.slice(1, 5);
+    
+    const firstFourDistWheel = this.getDistanceWheel(firstFourWheel);
+    if (firstFourDistWheel === 3 || firstFourDistWheel === 4) {
+      return [...firstFourWheel].sort((a, b) => this.#getRankValueWheel(b) - this.#getRankValueWheel(a));
+    }
+    const lastFourDistWheel = this.getDistanceWheel(lastFourWheel);
+    if (lastFourDistWheel === 3 || lastFourDistWheel === 4) {
+      return [...lastFourWheel].sort((a, b) => this.#getRankValueWheel(b) - this.#getRankValueWheel(a));
+    }
+    
+    return [];
+  }
+
+  /**
+   * Determines the primary made hand or draw and extracts the key cards.
+   * Assumes cards are already sorted and evaluation is complete.
+   * 
+   * @private
+   * @returns {string[]} Array of key cards, sorted from highest to lowest rank
+   */
+  #getKeyCards() {
+    // Ensure cards are sorted once (they likely already are from evaluation)
+    const sortedCards = [...this.cards].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    
+    // Calculate these once and reuse
+    const rankCounts = this.#getRankCounts();
+    const suits = this.countSuits();
+    
+    // Use evaluation results directly - no re-checking
+    // Check made hands in priority order
+    if (this.evaluation.isRoyalFlush || this.evaluation.isStraightFlush || 
+        this.evaluation.isFullHouse) {
+      return sortedCards; // All 5 cards are key cards
+    }
+    
+    if (this.evaluation.isStraight) {
+      return this.#getStraightCards();
+    }
+    
+    if (this.evaluation.isFourOfAKind) {
+      const fourRank = Object.keys(rankCounts).find(r => rankCounts[r] === 4);
+      return sortedCards.filter(c => c.slice(0, -1) === fourRank)
+        .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    }
+    
+    if (this.evaluation.isFlush) {
+      const flushSuit = Object.keys(suits).find(s => suits[s] === 5);
+      return sortedCards.filter(c => c.slice(-1) === flushSuit)
+        .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    }
+    
+    if (this.evaluation.isThreeOfAKind) {
+      const threeRank = Object.keys(rankCounts).find(r => rankCounts[r] === 3);
+      return sortedCards.filter(c => c.slice(0, -1) === threeRank)
+        .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    }
+    
+    if (this.evaluation.isTwoPair) {
+      const pairRanks = Object.keys(rankCounts).filter(r => rankCounts[r] === 2);
+      return sortedCards.filter(c => pairRanks.includes(c.slice(0, -1)))
+        .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    }
+    
+    if (this.evaluation.isPair) {
+      const pairRank = Object.keys(rankCounts).find(r => rankCounts[r] === 2);
+      return sortedCards.filter(c => c.slice(0, -1) === pairRank)
+        .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    }
+    
+    // Check draws (only if no made hand)
+    if (this.evaluation.isFlushDraw) {
+      const flushSuit = Object.keys(suits).find(s => suits[s] === 4);
+      return sortedCards.filter(c => c.slice(-1) === flushSuit)
+        .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    }
+    
+    if (this.evaluation.isBackdoorFlushDraw) {
+      const flushSuit = Object.keys(suits).find(s => suits[s] === 3);
+      return sortedCards.filter(c => c.slice(-1) === flushSuit)
+        .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    }
+    
+    if (this.evaluation.isOpenEndedStraightDraw || this.evaluation.isInsideStraightDraw) {
+      const drawCards = this.#getStraightDrawCards();
+      // Only return if we actually found draw cards (safety check)
+      if (drawCards.length === 4) {
+        return drawCards;
+      }
+    }
+    
+    // High card or no hand/draw
+    return [];
+  }
+
+  /**
+   * Gets the kicker cards (cards not in the made hand or draw).
+   * 
+   * @private
+   * @returns {string[]} Array of kicker cards, sorted from highest to lowest rank
+   */
+  #getKickerCards() {
+    const keyCards = this.#getKeyCards();
+    if (keyCards.length === 0) {
+      // All cards are kickers (high card)
+      return [...this.cards].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    }
+    
+    // Use Set for O(1) lookup
+    const keyCardsSet = new Set(keyCards);
+    return this.cards
+      .filter(c => !keyCardsSet.has(c))
+      .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
   }
 
   // ==================== HIGH CARD ====================

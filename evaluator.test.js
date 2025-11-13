@@ -1022,3 +1022,243 @@ Object.keys(TEST_CASES).forEach((handType) => {
     });
   });
 });
+
+// ==================== KEY CARDS AND KICKER CARDS TESTS ====================
+
+describe('keyCards and kickerCards', () => {
+  describe('Royal Flush', () => {
+    test('should have all 5 cards as keyCards, no kickerCards', () => {
+      const result = evaluateHand(['As', 'Ks', 'Qs', 'Js', 'Ts']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards).toEqual(['As', 'Ks', 'Qs', 'Js', 'Ts']);
+      expect(evaluation.kickerCards).toEqual([]);
+    });
+  });
+
+  describe('Straight Flush', () => {
+    test('should have all 5 cards as keyCards, no kickerCards', () => {
+      const result = evaluateHand(['9s', '8s', '7s', '6s', '5s']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards).toEqual(['9s', '8s', '7s', '6s', '5s']);
+      expect(evaluation.kickerCards).toEqual([]);
+    });
+
+    test('should handle wheel straight flush', () => {
+      const result = evaluateHand(['5d', '4d', '3d', '2d', 'Ad']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.sort()).toEqual(['5d', '4d', '3d', '2d', 'Ad'].sort());
+      expect(evaluation.kickerCards).toEqual([]);
+    });
+  });
+
+  describe('Four of a Kind', () => {
+    test('should have 4 cards of same rank as keyCards, 1 kicker', () => {
+      const result = evaluateHand(['As', 'Ah', 'Ad', 'Ac', 'Ks']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ah', 'Ad', 'Ac'].sort());
+      expect(evaluation.kickerCards).toEqual(['Ks']);
+    });
+
+    test('should have kicker sorted correctly', () => {
+      const result = evaluateHand(['2s', '2h', '2d', '2c', 'As']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.sort()).toEqual(['2s', '2h', '2d', '2c'].sort());
+      expect(evaluation.kickerCards).toEqual(['As']);
+    });
+  });
+
+  describe('Full House', () => {
+    test('should have all 5 cards as keyCards, no kickerCards', () => {
+      const result = evaluateHand(['As', 'Ah', 'Ad', 'Kc', 'Kh']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ah', 'Ad', 'Kc', 'Kh'].sort());
+      expect(evaluation.kickerCards).toEqual([]);
+    });
+  });
+
+  describe('Flush', () => {
+    test('should have all 5 cards of same suit as keyCards, no kickerCards', () => {
+      const result = evaluateHand(['As', 'Ks', 'Qs', 'Js', '9s']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ks', 'Qs', 'Js', '9s'].sort());
+      expect(evaluation.kickerCards).toEqual([]);
+    });
+  });
+
+  describe('Straight', () => {
+    test('should have all 5 cards as keyCards, no kickerCards', () => {
+      const result = evaluateHand(['As', 'Kh', 'Qd', 'Jc', 'Ts']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.sort()).toEqual(['As', 'Kh', 'Qd', 'Jc', 'Ts'].sort());
+      expect(evaluation.kickerCards).toEqual([]);
+    });
+
+    test('should handle wheel straight', () => {
+      const result = evaluateHand(['5s', '4h', '3d', '2c', 'As']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.sort()).toEqual(['5s', '4h', '3d', '2c', 'As'].sort());
+      expect(evaluation.kickerCards).toEqual([]);
+    });
+  });
+
+  describe('Three of a Kind', () => {
+    test('should have 3 cards of same rank as keyCards, 2 kickers', () => {
+      const result = evaluateHand(['As', 'Ah', 'Ad', 'Kc', 'Qs']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ah', 'Ad'].sort());
+      expect(evaluation.kickerCards.sort()).toEqual(['Kc', 'Qs'].sort());
+    });
+  });
+
+  describe('Two Pair', () => {
+    test('should have 4 cards (2 pairs) as keyCards, 1 kicker', () => {
+      const result = evaluateHand(['As', 'Ah', 'Kd', 'Kc', 'Qs']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ah', 'Kd', 'Kc'].sort());
+      expect(evaluation.kickerCards).toEqual(['Qs']);
+    });
+  });
+
+  describe('Pair', () => {
+    test('should have 2 cards of pair as keyCards, 3 kickers', () => {
+      const result = evaluateHand(['As', 'Ah', 'Kd', 'Qc', 'Js']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ah'].sort());
+      expect(evaluation.kickerCards.sort()).toEqual(['Kd', 'Qc', 'Js'].sort());
+    });
+  });
+
+  describe('High Card', () => {
+    test('should have no keyCards, all 5 cards as kickerCards (when no draw)', () => {
+      // Use a hand with no draws - cards that don't form any draw
+      const result = evaluateHand(['As', 'Kh', 'Qd', '7c', '5s']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards).toEqual([]);
+      expect(evaluation.kickerCards.sort()).toEqual(['As', 'Kh', 'Qd', '7c', '5s'].sort());
+    });
+
+    test('should have draw cards as keyCards when high card hand has a draw', () => {
+      const result = evaluateHand(['As', 'Kh', 'Qd', 'Jc', '9s']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      // This hand has a straight draw (A-K-Q-J needs T), so keyCards should be the 4 draw cards
+      expect(evaluation.keyCards.length).toBe(4);
+      expect(evaluation.kickerCards.length).toBe(1);
+      expect(evaluation.kickerCards).toEqual(['9s']);
+      // Verify all keyCards are in the draw sequence (A-K-Q-J)
+      const keyRanks = evaluation.keyCards.map(c => c.slice(0, -1));
+      expect(['A', 'K', 'Q', 'J']).toEqual(expect.arrayContaining(keyRanks));
+    });
+  });
+
+  describe('Flush Draw', () => {
+    test('should have 4 cards of same suit as keyCards, 1 kicker', () => {
+      const result = evaluateHand(['As', 'Ks', 'Qs', 'Js', '9h']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ks', 'Qs', 'Js'].sort());
+      expect(evaluation.kickerCards).toEqual(['9h']);
+    });
+  });
+
+  describe('Backdoor Flush Draw', () => {
+    test('should have 3 cards of same suit as keyCards, 2 kickers', () => {
+      const result = evaluateHand(['As', 'Ks', 'Qs', 'Jh', '9h']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ks', 'Qs'].sort());
+      expect(evaluation.kickerCards.sort()).toEqual(['Jh', '9h'].sort());
+    });
+  });
+
+  describe('Open-Ended Straight Draw', () => {
+    test('should have 4 cards forming draw as keyCards, 1 kicker', () => {
+      const result = evaluateHand(['9s', '8h', '7d', '6c', 'Kh']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.length).toBe(4);
+      expect(evaluation.kickerCards.length).toBe(1);
+      expect(evaluation.kickerCards).toEqual(['Kh']);
+      // Verify all keyCards are in the draw sequence
+      const keyRanks = evaluation.keyCards.map(c => c.slice(0, -1));
+      expect(['9', '8', '7', '6']).toEqual(expect.arrayContaining(keyRanks));
+    });
+  });
+
+  describe('Inside Straight Draw', () => {
+    test('should have 4 cards forming draw as keyCards, 1 kicker', () => {
+      const result = evaluateHand(['9s', '8h', '7d', '5c', 'Kh']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.length).toBe(4);
+      expect(evaluation.kickerCards.length).toBe(1);
+      expect(evaluation.kickerCards).toEqual(['Kh']);
+      // Verify all keyCards are in the draw sequence
+      const keyRanks = evaluation.keyCards.map(c => c.slice(0, -1));
+      expect(['9', '8', '7', '5']).toEqual(expect.arrayContaining(keyRanks));
+    });
+  });
+
+  describe('Card Sorting', () => {
+    test('keyCards should be sorted from highest to lowest rank', () => {
+      const result = evaluateHand(['2s', 'Ah', 'Ad', 'Ac', 'As']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      // Four of a kind - keyCards should be sorted
+      const sortedKeyCards = [...evaluation.keyCards].sort((a, b) => {
+        const rankMap = { A: 13, K: 12, Q: 11, J: 10, T: 9, '9': 8, '8': 7, '7': 6, '6': 5, '5': 4, '4': 3, '3': 2, '2': 1 };
+        const rankA = rankMap[a.slice(0, -1)];
+        const rankB = rankMap[b.slice(0, -1)];
+        return rankB - rankA;
+      });
+      expect(evaluation.keyCards).toEqual(sortedKeyCards);
+    });
+
+    test('kickerCards should be sorted from highest to lowest rank', () => {
+      const result = evaluateHand(['As', 'Ah', 'Kd', 'Qc', 'Js']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      // Pair - kickerCards should be sorted
+      const sortedKickerCards = [...evaluation.kickerCards].sort((a, b) => {
+        const rankMap = { A: 13, K: 12, Q: 11, J: 10, T: 9, '9': 8, '8': 7, '7': 6, '6': 5, '5': 4, '4': 3, '3': 2, '2': 1 };
+        const rankA = rankMap[a.slice(0, -1)];
+        const rankB = rankMap[b.slice(0, -1)];
+        return rankB - rankA;
+      });
+      expect(evaluation.kickerCards).toEqual(sortedKickerCards);
+    });
+  });
+});
