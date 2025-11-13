@@ -954,8 +954,8 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards).toEqual(['As', 'Ks', 'Qs', 'Js', 'Ts']);
-      expect(evaluation.kickerCards).toEqual([]);
+      expect(evaluation.keyCards.isRoyalFlush.sort()).toEqual(['As', 'Ks', 'Qs', 'Js', 'Ts'].sort());
+      expect(evaluation.kickerCards.isRoyalFlush).toEqual([]);
     });
   });
 
@@ -965,8 +965,8 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards).toEqual(['9s', '8s', '7s', '6s', '5s']);
-      expect(evaluation.kickerCards).toEqual([]);
+      expect(evaluation.keyCards.isStraightFlush.sort()).toEqual(['9s', '8s', '7s', '6s', '5s'].sort());
+      expect(evaluation.kickerCards.isStraightFlush).toEqual([]);
     });
 
     test('should handle wheel straight flush', () => {
@@ -974,8 +974,8 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards.sort()).toEqual(['5d', '4d', '3d', '2d', 'Ad'].sort());
-      expect(evaluation.kickerCards).toEqual([]);
+      expect(evaluation.keyCards.isStraightFlush.sort()).toEqual(['5d', '4d', '3d', '2d', 'Ad'].sort());
+      expect(evaluation.kickerCards.isStraightFlush).toEqual([]);
     });
   });
 
@@ -985,8 +985,8 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ah', 'Ad', 'Ac'].sort());
-      expect(evaluation.kickerCards).toEqual(['Ks']);
+      expect(evaluation.keyCards.isFourOfAKind.sort()).toEqual(['As', 'Ah', 'Ad', 'Ac'].sort());
+      expect(evaluation.kickerCards.isFourOfAKind).toEqual(['Ks']);
     });
 
     test('should have kicker sorted correctly', () => {
@@ -994,8 +994,8 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards.sort()).toEqual(['2s', '2h', '2d', '2c'].sort());
-      expect(evaluation.kickerCards).toEqual(['As']);
+      expect(evaluation.keyCards.isFourOfAKind.sort()).toEqual(['2s', '2h', '2d', '2c'].sort());
+      expect(evaluation.kickerCards.isFourOfAKind).toEqual(['As']);
     });
   });
 
@@ -1005,8 +1005,8 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ah', 'Ad', 'Kc', 'Kh'].sort());
-      expect(evaluation.kickerCards).toEqual([]);
+      expect(evaluation.keyCards.isFullHouse.sort()).toEqual(['As', 'Ah', 'Ad', 'Kc', 'Kh'].sort());
+      expect(evaluation.kickerCards.isFullHouse).toEqual([]);
     });
   });
 
@@ -1016,8 +1016,8 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ks', 'Qs', 'Js', '9s'].sort());
-      expect(evaluation.kickerCards).toEqual([]);
+      expect(evaluation.keyCards.isFlush.sort()).toEqual(['As', 'Ks', 'Qs', 'Js', '9s'].sort());
+      expect(evaluation.kickerCards.isFlush).toEqual([]);
     });
   });
 
@@ -1027,8 +1027,8 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards.sort()).toEqual(['As', 'Kh', 'Qd', 'Jc', 'Ts'].sort());
-      expect(evaluation.kickerCards).toEqual([]);
+      expect(evaluation.keyCards.isStraight.sort()).toEqual(['As', 'Kh', 'Qd', 'Jc', 'Ts'].sort());
+      expect(evaluation.kickerCards.isStraight).toEqual([]);
     });
 
     test('should handle wheel straight', () => {
@@ -1036,8 +1036,8 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards.sort()).toEqual(['5s', '4h', '3d', '2c', 'As'].sort());
-      expect(evaluation.kickerCards).toEqual([]);
+      expect(evaluation.keyCards.isStraight.sort()).toEqual(['5s', '4h', '3d', '2c', 'As'].sort());
+      expect(evaluation.kickerCards.isStraight).toEqual([]);
     });
   });
 
@@ -1047,8 +1047,8 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ah', 'Ad'].sort());
-      expect(evaluation.kickerCards.sort()).toEqual(['Kc', 'Qs'].sort());
+      expect(evaluation.keyCards.isThreeOfAKind.sort()).toEqual(['As', 'Ah', 'Ad'].sort());
+      expect(evaluation.kickerCards.isThreeOfAKind.sort()).toEqual(['Kc', 'Qs'].sort());
     });
   });
 
@@ -1058,8 +1058,8 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ah', 'Kd', 'Kc'].sort());
-      expect(evaluation.kickerCards).toEqual(['Qs']);
+      expect(evaluation.keyCards.isTwoPair.sort()).toEqual(['As', 'Ah', 'Kd', 'Kc'].sort());
+      expect(evaluation.kickerCards.isTwoPair).toEqual(['Qs']);
     });
   });
 
@@ -1069,20 +1069,19 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ah'].sort());
-      expect(evaluation.kickerCards.sort()).toEqual(['Kd', 'Qc', 'Js'].sort());
+      expect(evaluation.keyCards.isPair.sort()).toEqual(['As', 'Ah'].sort());
+      expect(evaluation.kickerCards.isPair.sort()).toEqual(['Kd', 'Qc', 'Js'].sort());
     });
   });
 
   describe('High Card', () => {
-    test('should have no keyCards, all 5 cards as kickerCards (when no draw)', () => {
-      // Use a hand with no draws - cards that don't form any draw
+    test('should have empty keyCards, all 5 cards as kickerCards (when no draw)', () => {
       const result = evaluateHand(['As', 'Kh', 'Qd', '7c', '5s']);
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards).toEqual([]);
-      expect(evaluation.kickerCards.sort()).toEqual(['As', 'Kh', 'Qd', '7c', '5s'].sort());
+      expect(evaluation.keyCards.isHighCard).toEqual([]);
+      expect(evaluation.kickerCards.isHighCard.sort()).toEqual(['As', 'Kh', 'Qd', '7c', '5s'].sort());
     });
 
     test('should have draw cards as keyCards when high card hand has a draw', () => {
@@ -1090,12 +1089,10 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      // This hand has a straight draw (A-K-Q-J needs T), so keyCards should be the 4 draw cards
-      expect(evaluation.keyCards.length).toBe(4);
-      expect(evaluation.kickerCards.length).toBe(1);
-      expect(evaluation.kickerCards).toEqual(['9s']);
-      // Verify all keyCards are in the draw sequence (A-K-Q-J)
-      const keyRanks = evaluation.keyCards.map(c => c.slice(0, -1));
+      expect(evaluation.keyCards.isStraightDraw.length).toBe(4);
+      expect(evaluation.kickerCards.isStraightDraw.length).toBe(1);
+      expect(evaluation.kickerCards.isStraightDraw).toEqual(['9s']);
+      const keyRanks = evaluation.keyCards.isStraightDraw.map(c => c.slice(0, -1));
       expect(['A', 'K', 'Q', 'J']).toEqual(expect.arrayContaining(keyRanks));
     });
   });
@@ -1106,8 +1103,8 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ks', 'Qs', 'Js'].sort());
-      expect(evaluation.kickerCards).toEqual(['9h']);
+      expect(evaluation.keyCards.isFlushDraw.sort()).toEqual(['As', 'Ks', 'Qs', 'Js'].sort());
+      expect(evaluation.kickerCards.isFlushDraw).toEqual(['9h']);
     });
   });
 
@@ -1117,8 +1114,8 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards.sort()).toEqual(['As', 'Ks', 'Qs'].sort());
-      expect(evaluation.kickerCards.sort()).toEqual(['Jh', '9h'].sort());
+      expect(evaluation.keyCards.isBackdoorFlushDraw.sort()).toEqual(['As', 'Ks', 'Qs'].sort());
+      expect(evaluation.kickerCards.isBackdoorFlushDraw.sort()).toEqual(['Jh', '9h'].sort());
     });
   });
 
@@ -1128,11 +1125,10 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards.length).toBe(4);
-      expect(evaluation.kickerCards.length).toBe(1);
-      expect(evaluation.kickerCards).toEqual(['Kh']);
-      // Verify all keyCards are in the draw sequence
-      const keyRanks = evaluation.keyCards.map(c => c.slice(0, -1));
+      expect(evaluation.keyCards.isOpenEndedStraightDraw.length).toBe(4);
+      expect(evaluation.kickerCards.isOpenEndedStraightDraw.length).toBe(1);
+      expect(evaluation.kickerCards.isOpenEndedStraightDraw).toEqual(['Kh']);
+      const keyRanks = evaluation.keyCards.isOpenEndedStraightDraw.map(c => c.slice(0, -1));
       expect(['9', '8', '7', '6']).toEqual(expect.arrayContaining(keyRanks));
     });
   });
@@ -1143,12 +1139,37 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      expect(evaluation.keyCards.length).toBe(4);
-      expect(evaluation.kickerCards.length).toBe(1);
-      expect(evaluation.kickerCards).toEqual(['Kh']);
-      // Verify all keyCards are in the draw sequence
-      const keyRanks = evaluation.keyCards.map(c => c.slice(0, -1));
+      expect(evaluation.keyCards.isInsideStraightDraw.length).toBe(4);
+      expect(evaluation.kickerCards.isInsideStraightDraw.length).toBe(1);
+      expect(evaluation.kickerCards.isInsideStraightDraw).toEqual(['Kh']);
+      const keyRanks = evaluation.keyCards.isInsideStraightDraw.map(c => c.slice(0, -1));
       expect(['9', '8', '7', '5']).toEqual(expect.arrayContaining(keyRanks));
+    });
+  });
+
+  describe('Multiple Hand Types', () => {
+    test('should have separate keyCards for pair and flush draw', () => {
+      const result = evaluateHand(['As', 'Ah', 'Ks', 'Qs', 'Js']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.isPair.sort()).toEqual(['As', 'Ah'].sort());
+      expect(evaluation.kickerCards.isPair.sort()).toEqual(['Ks', 'Qs', 'Js'].sort());
+      expect(evaluation.keyCards.isFlushDraw.sort()).toEqual(['As', 'Ks', 'Qs', 'Js'].sort());
+      expect(evaluation.kickerCards.isFlushDraw).toEqual(['Ah']);
+    });
+  });
+
+  describe('Empty Arrays for False Hand Types', () => {
+    test('should have empty arrays for false hand types', () => {
+      const result = evaluateHand(['As', 'Ah', 'Kd', 'Qc', 'Js']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.keyCards.isFourOfAKind).toEqual([]);
+      expect(evaluation.kickerCards.isFourOfAKind).toEqual([]);
+      expect(evaluation.keyCards.isFlush).toEqual([]);
+      expect(evaluation.kickerCards.isFlush).toEqual([]);
     });
   });
 
@@ -1158,14 +1179,13 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      // Four of a kind - keyCards should be sorted
-      const sortedKeyCards = [...evaluation.keyCards].sort((a, b) => {
+      const sortedKeyCards = [...evaluation.keyCards.isFourOfAKind].sort((a, b) => {
         const rankMap = { A: 13, K: 12, Q: 11, J: 10, T: 9, '9': 8, '8': 7, '7': 6, '6': 5, '5': 4, '4': 3, '3': 2, '2': 1 };
         const rankA = rankMap[a.slice(0, -1)];
         const rankB = rankMap[b.slice(0, -1)];
         return rankB - rankA;
       });
-      expect(evaluation.keyCards).toEqual(sortedKeyCards);
+      expect(evaluation.keyCards.isFourOfAKind).toEqual(sortedKeyCards);
     });
 
     test('kickerCards should be sorted from highest to lowest rank', () => {
@@ -1173,14 +1193,13 @@ describe('keyCards and kickerCards', () => {
       const evaluationKey = Object.keys(result)[0];
       const evaluation = result[evaluationKey];
       
-      // Pair - kickerCards should be sorted
-      const sortedKickerCards = [...evaluation.kickerCards].sort((a, b) => {
+      const sortedKickerCards = [...evaluation.kickerCards.isPair].sort((a, b) => {
         const rankMap = { A: 13, K: 12, Q: 11, J: 10, T: 9, '9': 8, '8': 7, '7': 6, '6': 5, '5': 4, '4': 3, '3': 2, '2': 1 };
         const rankA = rankMap[a.slice(0, -1)];
         const rankB = rankMap[b.slice(0, -1)];
         return rankB - rankA;
       });
-      expect(evaluation.kickerCards).toEqual(sortedKickerCards);
+      expect(evaluation.kickerCards.isPair).toEqual(sortedKickerCards);
     });
   });
 });

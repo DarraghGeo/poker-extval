@@ -194,8 +194,8 @@ class HandEvaluator {
     // Add keyCards and kickerCards before restoring original evaluation
     // (these methods need access to this.evaluation)
     const evaluation = this.evaluation;
-    evaluation.keyCards = this.#getKeyCards();
-    evaluation.kickerCards = this.#getKickerCards();
+    evaluation.keyCards = this.#buildKeyCardsObject();
+    evaluation.kickerCards = this.#buildKickerCardsObject(evaluation.keyCards);
     
     // Restore original evaluation
     this.evaluation = originalEvaluation;
@@ -971,6 +971,390 @@ class HandEvaluator {
     return [];
   }
 
+  // ==================== KEY CARDS EXTRACTION BY HAND TYPE ====================
+  
+  /**
+   * Gets key cards for royal flush (all 5 cards).
+   * 
+   * @private
+   * @returns {string[]} Array of 5 cards if royal flush, empty array otherwise
+   */
+  #getKeyCardsForRoyalFlush() {
+    if (!this.evaluation.isRoyalFlush) return [];
+    return [...this.cards].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+  }
+
+  /**
+   * Gets key cards for straight flush (all 5 cards).
+   * 
+   * @private
+   * @returns {string[]} Array of 5 cards if straight flush, empty array otherwise
+   */
+  #getKeyCardsForStraightFlush() {
+    if (!this.evaluation.isStraightFlush) return [];
+    return [...this.cards].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+  }
+
+  /**
+   * Gets key cards for four of a kind (4 cards of same rank).
+   * 
+   * @private
+   * @returns {string[]} Array of 4 cards if four of a kind, empty array otherwise
+   */
+  #getKeyCardsForFourOfAKind() {
+    if (!this.evaluation.isFourOfAKind) return [];
+    const rankCounts = this.#getRankCounts();
+    const fourRank = Object.keys(rankCounts).find(r => rankCounts[r] === 4);
+    return this.cards.filter(c => c.slice(0, -1) === fourRank)
+      .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+  }
+
+  /**
+   * Gets key cards for full house (all 5 cards).
+   * 
+   * @private
+   * @returns {string[]} Array of 5 cards if full house, empty array otherwise
+   */
+  #getKeyCardsForFullHouse() {
+    if (!this.evaluation.isFullHouse) return [];
+    return [...this.cards].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+  }
+
+  /**
+   * Gets key cards for flush (all 5 cards of same suit).
+   * 
+   * @private
+   * @returns {string[]} Array of 5 cards if flush, empty array otherwise
+   */
+  #getKeyCardsForFlush() {
+    if (!this.evaluation.isFlush) return [];
+    const suits = this.#countSuits();
+    const flushSuit = Object.keys(suits).find(s => suits[s] === 5);
+    return this.cards.filter(c => c.slice(-1) === flushSuit)
+      .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+  }
+
+  /**
+   * Gets key cards for straight (5 cards forming straight).
+   * 
+   * @private
+   * @returns {string[]} Array of 5 cards if straight, empty array otherwise
+   */
+  #getKeyCardsForStraight() {
+    if (!this.evaluation.isStraight) return [];
+    return this.#getStraightCards();
+  }
+
+  /**
+   * Gets key cards for three of a kind (3 cards of same rank).
+   * 
+   * @private
+   * @returns {string[]} Array of 3 cards if three of a kind, empty array otherwise
+   */
+  #getKeyCardsForThreeOfAKind() {
+    if (!this.evaluation.isThreeOfAKind) return [];
+    const rankCounts = this.#getRankCounts();
+    const threeRank = Object.keys(rankCounts).find(r => rankCounts[r] === 3);
+    return this.cards.filter(c => c.slice(0, -1) === threeRank)
+      .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+  }
+
+  /**
+   * Gets key cards for two pair (4 cards forming 2 pairs).
+   * 
+   * @private
+   * @returns {string[]} Array of 4 cards if two pair, empty array otherwise
+   */
+  #getKeyCardsForTwoPair() {
+    if (!this.evaluation.isTwoPair) return [];
+    const rankCounts = this.#getRankCounts();
+    const pairRanks = Object.keys(rankCounts).filter(r => rankCounts[r] === 2);
+    return this.cards.filter(c => pairRanks.includes(c.slice(0, -1)))
+      .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+  }
+
+  /**
+   * Gets key cards for pair (2 cards of same rank).
+   * 
+   * @private
+   * @returns {string[]} Array of 2 cards if pair, empty array otherwise
+   */
+  #getKeyCardsForPair() {
+    if (!this.evaluation.isPair) return [];
+    const rankCounts = this.#getRankCounts();
+    const pairRank = Object.keys(rankCounts).find(r => rankCounts[r] === 2);
+    return this.cards.filter(c => c.slice(0, -1) === pairRank)
+      .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+  }
+
+  /**
+   * Gets key cards for top pair (2 cards if top pair).
+   * 
+   * @private
+   * @returns {string[]} Array of 2 cards if top pair, empty array otherwise
+   */
+  #getKeyCardsForTopPair() {
+    if (!this.evaluation.isTopPair) return [];
+    return this.#getKeyCardsForPair();
+  }
+
+  /**
+   * Gets key cards for middle pair (2 cards if middle pair).
+   * 
+   * @private
+   * @returns {string[]} Array of 2 cards if middle pair, empty array otherwise
+   */
+  #getKeyCardsForMiddlePair() {
+    if (!this.evaluation.isMiddlePair) return [];
+    return this.#getKeyCardsForPair();
+  }
+
+  /**
+   * Gets key cards for bottom pair (2 cards if bottom pair).
+   * 
+   * @private
+   * @returns {string[]} Array of 2 cards if bottom pair, empty array otherwise
+   */
+  #getKeyCardsForBottomPair() {
+    if (!this.evaluation.isBottomPair) return [];
+    return this.#getKeyCardsForPair();
+  }
+
+  /**
+   * Gets key cards for top and middle pair (4 cards if top and middle pair).
+   * 
+   * @private
+   * @returns {string[]} Array of 4 cards if top and middle pair, empty array otherwise
+   */
+  #getKeyCardsForTopAndMiddlePair() {
+    if (!this.evaluation.isTopAndMiddlePair) return [];
+    return this.#getKeyCardsForTwoPair();
+  }
+
+  /**
+   * Gets key cards for top and bottom pair (4 cards if top and bottom pair).
+   * 
+   * @private
+   * @returns {string[]} Array of 4 cards if top and bottom pair, empty array otherwise
+   */
+  #getKeyCardsForTopAndBottomPair() {
+    if (!this.evaluation.isTopAndBottomPair) return [];
+    return this.#getKeyCardsForTwoPair();
+  }
+
+  /**
+   * Gets key cards for middle and bottom pair (4 cards if middle and bottom pair).
+   * 
+   * @private
+   * @returns {string[]} Array of 4 cards if middle and bottom pair, empty array otherwise
+   */
+  #getKeyCardsForMiddleAndBottomPair() {
+    if (!this.evaluation.isMiddleAndBottomPair) return [];
+    return this.#getKeyCardsForTwoPair();
+  }
+
+  /**
+   * Gets key cards for top three of a kind (3 cards if top three).
+   * 
+   * @private
+   * @returns {string[]} Array of 3 cards if top three of a kind, empty array otherwise
+   */
+  #getKeyCardsForTopThreeOfAKind() {
+    if (!this.evaluation.isTopThreeOfAKind) return [];
+    return this.#getKeyCardsForThreeOfAKind();
+  }
+
+  /**
+   * Gets key cards for middle three of a kind (3 cards if middle three).
+   * 
+   * @private
+   * @returns {string[]} Array of 3 cards if middle three of a kind, empty array otherwise
+   */
+  #getKeyCardsForMiddleThreeOfAKind() {
+    if (!this.evaluation.isMiddleThreeOfAKind) return [];
+    return this.#getKeyCardsForThreeOfAKind();
+  }
+
+  /**
+   * Gets key cards for bottom three of a kind (3 cards if bottom three).
+   * 
+   * @private
+   * @returns {string[]} Array of 3 cards if bottom three of a kind, empty array otherwise
+   */
+  #getKeyCardsForBottomThreeOfAKind() {
+    if (!this.evaluation.isBottomThreeOfAKind) return [];
+    return this.#getKeyCardsForThreeOfAKind();
+  }
+
+  /**
+   * Gets key cards for flush draw (4 cards of same suit).
+   * 
+   * @private
+   * @returns {string[]} Array of 4 cards if flush draw, empty array otherwise
+   */
+  #getKeyCardsForFlushDraw() {
+    if (!this.evaluation.isFlushDraw) return [];
+    const suits = this.#countSuits();
+    const flushSuit = Object.keys(suits).find(s => suits[s] === 4);
+    return this.cards.filter(c => c.slice(-1) === flushSuit)
+      .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+  }
+
+  /**
+   * Gets key cards for backdoor flush draw (3 cards of same suit).
+   * 
+   * @private
+   * @returns {string[]} Array of 3 cards if backdoor flush draw, empty array otherwise
+   */
+  #getKeyCardsForBackdoorFlushDraw() {
+    if (!this.evaluation.isBackdoorFlushDraw) return [];
+    const suits = this.#countSuits();
+    const flushSuit = Object.keys(suits).find(s => suits[s] === 3);
+    return this.cards.filter(c => c.slice(-1) === flushSuit)
+      .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+  }
+
+  /**
+   * Gets key cards for open-ended straight draw (4 cards forming draw).
+   * 
+   * @private
+   * @returns {string[]} Array of 4 cards if open-ended straight draw, empty array otherwise
+   */
+  #getKeyCardsForOpenEndedStraightDraw() {
+    if (!this.evaluation.isOpenEndedStraightDraw) return [];
+    return this.#getStraightDrawCards();
+  }
+
+  /**
+   * Gets key cards for inside straight draw (4 cards forming draw).
+   * 
+   * @private
+   * @returns {string[]} Array of 4 cards if inside straight draw, empty array otherwise
+   */
+  #getKeyCardsForInsideStraightDraw() {
+    if (!this.evaluation.isInsideStraightDraw) return [];
+    return this.#getStraightDrawCards();
+  }
+
+  /**
+   * Gets key cards for straight draw (4 cards forming any straight draw).
+   * 
+   * @private
+   * @returns {string[]} Array of 4 cards if straight draw, empty array otherwise
+   */
+  #getKeyCardsForStraightDraw() {
+    if (!this.evaluation.isStraightDraw) return [];
+    return this.#getStraightDrawCards();
+  }
+
+  /**
+   * Gets key cards for wheel straight (5 cards forming wheel).
+   * 
+   * @private
+   * @returns {string[]} Array of 5 cards if wheel straight, empty array otherwise
+   */
+  #getKeyCardsForStraightWheel() {
+    if (!this.evaluation.isStraightWheel) return [];
+    return this.#getStraightCards();
+  }
+
+  /**
+   * Gets key cards for open-ended straight draw wheel (4 cards forming wheel draw).
+   * 
+   * @private
+   * @returns {string[]} Array of 4 cards if wheel open-ended draw, empty array otherwise
+   */
+  #getKeyCardsForOpenEndedStraightDrawWheel() {
+    if (!this.evaluation.isOpenEndedStraightDrawWheel) return [];
+    return this.#getStraightDrawCards();
+  }
+
+  /**
+   * Gets key cards for inside straight draw wheel (4 cards forming wheel draw).
+   * 
+   * @private
+   * @returns {string[]} Array of 4 cards if wheel inside draw, empty array otherwise
+   */
+  #getKeyCardsForInsideStraightDrawWheel() {
+    if (!this.evaluation.isInsideStraightDrawWheel) return [];
+    return this.#getStraightDrawCards();
+  }
+
+  /**
+   * Gets key cards for high card (empty array).
+   * 
+   * @private
+   * @returns {string[]} Always returns empty array
+   */
+  #getKeyCardsForHighCard() {
+    return [];
+  }
+
+  /**
+   * Builds the keyCards object with entries for all hand types.
+   * 
+   * @private
+   * @returns {Object} Object with keys for all hand types, values are arrays of key cards
+   */
+  #buildKeyCardsObject() {
+    return {
+      isRoyalFlush: this.#getKeyCardsForRoyalFlush(),
+      isStraightFlush: this.#getKeyCardsForStraightFlush(),
+      isFourOfAKind: this.#getKeyCardsForFourOfAKind(),
+      isFullHouse: this.#getKeyCardsForFullHouse(),
+      isFlush: this.#getKeyCardsForFlush(),
+      isStraight: this.#getKeyCardsForStraight(),
+      isThreeOfAKind: this.#getKeyCardsForThreeOfAKind(),
+      isTwoPair: this.#getKeyCardsForTwoPair(),
+      isPair: this.#getKeyCardsForPair(),
+      isTopPair: this.#getKeyCardsForTopPair(),
+      isMiddlePair: this.#getKeyCardsForMiddlePair(),
+      isBottomPair: this.#getKeyCardsForBottomPair(),
+      isTopAndMiddlePair: this.#getKeyCardsForTopAndMiddlePair(),
+      isTopAndBottomPair: this.#getKeyCardsForTopAndBottomPair(),
+      isMiddleAndBottomPair: this.#getKeyCardsForMiddleAndBottomPair(),
+      isTopThreeOfAKind: this.#getKeyCardsForTopThreeOfAKind(),
+      isMiddleThreeOfAKind: this.#getKeyCardsForMiddleThreeOfAKind(),
+      isBottomThreeOfAKind: this.#getKeyCardsForBottomThreeOfAKind(),
+      isFlushDraw: this.#getKeyCardsForFlushDraw(),
+      isBackdoorFlushDraw: this.#getKeyCardsForBackdoorFlushDraw(),
+      isOpenEndedStraightDraw: this.#getKeyCardsForOpenEndedStraightDraw(),
+      isInsideStraightDraw: this.#getKeyCardsForInsideStraightDraw(),
+      isStraightDraw: this.#getKeyCardsForStraightDraw(),
+      isStraightWheel: this.#getKeyCardsForStraightWheel(),
+      isOpenEndedStraightDrawWheel: this.#getKeyCardsForOpenEndedStraightDrawWheel(),
+      isInsideStraightDrawWheel: this.#getKeyCardsForInsideStraightDrawWheel(),
+      isHighCard: this.#getKeyCardsForHighCard()
+    };
+  }
+
+  /**
+   * Builds the kickerCards object with entries for all hand types.
+   * 
+   * @private
+   * @param {Object} keyCardsObj - The keyCards object
+   * @returns {Object} Object with keys for all hand types, values are arrays of kicker cards
+   */
+  #buildKickerCardsObject(keyCardsObj) {
+    const sortedCards = [...this.cards].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    const result = {};
+    
+    for (const [handType, keyCards] of Object.entries(keyCardsObj)) {
+      if (handType === 'isHighCard') {
+        result[handType] = sortedCards;
+      } else if (keyCards.length === 0) {
+        result[handType] = [];
+      } else {
+        const keyCardsSet = new Set(keyCards);
+        result[handType] = this.cards
+          .filter(c => !keyCardsSet.has(c))
+          .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+      }
+    }
+    
+    return result;
+  }
+
   /**
    * Helper method to extract the 4 cards that form a straight draw.
    * Handles both standard and wheel straight draws.
@@ -1008,107 +1392,6 @@ class HandEvaluator {
     }
     
     return [];
-  }
-
-  /**
-   * Determines the primary made hand or draw and extracts the key cards.
-   * Assumes cards are already sorted and evaluation is complete.
-   * 
-   * @private
-   * @returns {string[]} Array of key cards, sorted from highest to lowest rank
-   */
-  #getKeyCards() {
-    // Ensure cards are sorted once (they likely already are from evaluation)
-    const sortedCards = [...this.cards].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
-    
-    // Calculate these once and reuse
-    const rankCounts = this.#getRankCounts();
-    const suits = this.#countSuits();
-    
-    // Use evaluation results directly - no re-checking
-    // Check made hands in priority order
-    if (this.evaluation.isRoyalFlush || this.evaluation.isStraightFlush || 
-        this.evaluation.isFullHouse) {
-      return sortedCards; // All 5 cards are key cards
-    }
-    
-    if (this.evaluation.isStraight) {
-      return this.#getStraightCards();
-    }
-    
-    if (this.evaluation.isFourOfAKind) {
-      const fourRank = Object.keys(rankCounts).find(r => rankCounts[r] === 4);
-      return sortedCards.filter(c => c.slice(0, -1) === fourRank)
-        .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
-    }
-    
-    if (this.evaluation.isFlush) {
-      const flushSuit = Object.keys(suits).find(s => suits[s] === 5);
-      return sortedCards.filter(c => c.slice(-1) === flushSuit)
-        .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
-    }
-    
-    if (this.evaluation.isThreeOfAKind) {
-      const threeRank = Object.keys(rankCounts).find(r => rankCounts[r] === 3);
-      return sortedCards.filter(c => c.slice(0, -1) === threeRank)
-        .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
-    }
-    
-    if (this.evaluation.isTwoPair) {
-      const pairRanks = Object.keys(rankCounts).filter(r => rankCounts[r] === 2);
-      return sortedCards.filter(c => pairRanks.includes(c.slice(0, -1)))
-        .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
-    }
-    
-    if (this.evaluation.isPair) {
-      const pairRank = Object.keys(rankCounts).find(r => rankCounts[r] === 2);
-      return sortedCards.filter(c => c.slice(0, -1) === pairRank)
-        .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
-    }
-    
-    // Check draws (only if no made hand)
-    if (this.evaluation.isFlushDraw) {
-      const flushSuit = Object.keys(suits).find(s => suits[s] === 4);
-      return sortedCards.filter(c => c.slice(-1) === flushSuit)
-        .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
-    }
-    
-    if (this.evaluation.isBackdoorFlushDraw) {
-      const flushSuit = Object.keys(suits).find(s => suits[s] === 3);
-      return sortedCards.filter(c => c.slice(-1) === flushSuit)
-        .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
-    }
-    
-    if (this.evaluation.isOpenEndedStraightDraw || this.evaluation.isInsideStraightDraw) {
-      const drawCards = this.#getStraightDrawCards();
-      // Only return if we actually found draw cards (safety check)
-      if (drawCards.length === 4) {
-        return drawCards;
-      }
-    }
-    
-    // High card or no hand/draw
-    return [];
-  }
-
-  /**
-   * Gets the kicker cards (cards not in the made hand or draw).
-   * 
-   * @private
-   * @returns {string[]} Array of kicker cards, sorted from highest to lowest rank
-   */
-  #getKickerCards() {
-    const keyCards = this.#getKeyCards();
-    if (keyCards.length === 0) {
-      // All cards are kickers (high card)
-      return [...this.cards].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
-    }
-    
-    // Use Set for O(1) lookup
-    const keyCardsSet = new Set(keyCards);
-    return this.cards
-      .filter(c => !keyCardsSet.has(c))
-      .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
   }
 
   // ==================== HIGH CARD ====================

@@ -128,8 +128,10 @@ The `evaluateHand()` function returns an object where:
 - `isInsideStraightDrawWheel` - Inside draw using wheel ranking
 
 #### Card Arrays
-- `keyCards` - Array of cards (sorted) that constitute the made hand or draw
-- `kickerCards` - Array of cards (sorted) that don't constitute the made hand or draw
+- `keyCards` - Object with keys for each hand type/draw, values are arrays of cards (sorted) that constitute that specific hand type or draw. False hand types have empty arrays `[]`.
+- `kickerCards` - Object with keys for each hand type/draw, values are arrays of cards (sorted) that don't constitute that specific hand type or draw. False hand types have empty arrays `[]`, except `isHighCard` which contains all 5 cards when true.
+
+**Note**: Each hand type has its own `keyCards` and `kickerCards` entries. For example, a hand with both a pair and a flush draw will have separate entries in `keyCards.isPair`, `keyCards.isFlushDraw`, `kickerCards.isPair`, and `kickerCards.isFlushDraw`.
 
 ### Example Response
 
@@ -160,8 +162,86 @@ The `evaluateHand()` function returns an object where:
     "isInsideStraightDraw": false,
     "isStraightDraw": false,
     "isHighCard": false,
-    "keyCards": ["As", "Ks", "Qs", "Js", "Ts"],
-    "kickerCards": []
+    "keyCards": {
+      "isRoyalFlush": ["As", "Ks", "Qs", "Js", "Ts"],
+      "isStraightFlush": [],
+      "isFourOfAKind": [],
+      "isFullHouse": [],
+      "isFlush": ["As", "Ks", "Qs", "Js", "Ts"],
+      "isStraight": ["As", "Ks", "Qs", "Js", "Ts"],
+      "isThreeOfAKind": [],
+      "isTwoPair": [],
+      "isPair": [],
+      "isTopPair": [],
+      "isMiddlePair": [],
+      "isBottomPair": [],
+      "isTopAndMiddlePair": [],
+      "isTopAndBottomPair": [],
+      "isMiddleAndBottomPair": [],
+      "isTopThreeOfAKind": [],
+      "isMiddleThreeOfAKind": [],
+      "isBottomThreeOfAKind": [],
+      "isFlushDraw": [],
+      "isBackdoorFlushDraw": [],
+      "isOpenEndedStraightDraw": [],
+      "isInsideStraightDraw": [],
+      "isStraightDraw": [],
+      "isStraightWheel": [],
+      "isOpenEndedStraightDrawWheel": [],
+      "isInsideStraightDrawWheel": [],
+      "isHighCard": []
+    },
+    "kickerCards": {
+      "isRoyalFlush": [],
+      "isStraightFlush": [],
+      "isFourOfAKind": [],
+      "isFullHouse": [],
+      "isFlush": [],
+      "isStraight": [],
+      "isThreeOfAKind": [],
+      "isTwoPair": [],
+      "isPair": [],
+      "isTopPair": [],
+      "isMiddlePair": [],
+      "isBottomPair": [],
+      "isTopAndMiddlePair": [],
+      "isTopAndBottomPair": [],
+      "isMiddleAndBottomPair": [],
+      "isTopThreeOfAKind": [],
+      "isMiddleThreeOfAKind": [],
+      "isBottomThreeOfAKind": [],
+      "isFlushDraw": [],
+      "isBackdoorFlushDraw": [],
+      "isOpenEndedStraightDraw": [],
+      "isInsideStraightDraw": [],
+      "isStraightDraw": [],
+      "isStraightWheel": [],
+      "isOpenEndedStraightDrawWheel": [],
+      "isInsideStraightDrawWheel": [],
+      "isHighCard": []
+    }
+  }
+}
+```
+
+**Example 2: Pair with Flush Draw**
+
+```javascript
+{
+  "As, Ah, Ks, Qs, Js": {
+    "isPair": true,
+    "isFlushDraw": true,
+    // ... other boolean properties ...
+    "keyCards": {
+      "isPair": ["As", "Ah"],
+      "isFlushDraw": ["As", "Ks", "Qs", "Js"],
+      // ... other hand types with empty arrays ...
+    },
+    "kickerCards": {
+      "isPair": ["Ks", "Qs", "Js"],
+      "isFlushDraw": ["Ah"],
+      // ... other hand types with empty arrays ...
+    }
   }
 }
 ```
