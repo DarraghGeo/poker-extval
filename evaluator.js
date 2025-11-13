@@ -158,7 +158,7 @@ class HandEvaluator {
    *   - Pair categorization: isTopPair, isMiddlePair, isBottomPair
    *   - Two pair categorization: isTopAndMiddlePair, isTopAndBottomPair, isMiddleAndBottomPair
    *   - Three of a kind categorization: isTopThreeOfAKind, isMiddleThreeOfAKind, isBottomThreeOfAKind
-   *   - Draws: isFlushDraw, isBackdoorFlushDraw, isOpenEndedStraightDraw, isInsideStraightDraw
+   *   - Draws: isFlushDraw, isBackdoorFlushDraw, isOpenEndedStraightDraw, isInsideStraightDraw, isStraightDraw
    */
   #evaluateSingleHand() {
     // Temporarily set this.evaluation to an empty object for the evaluation methods to use
@@ -188,6 +188,7 @@ class HandEvaluator {
     this.isStraightFlush();
     this.isOpenEndedStraightDraw();
     this.isInsideStraightDraw();
+    this.isStraightDraw();
     this.isHighCard();
     
     // Get the evaluation object and restore original
@@ -942,6 +943,26 @@ class HandEvaluator {
 
     this.sortWheel();
     return this.evaluation.isInsideStraightDrawWheel = this.getDistanceWheel(this.cards.slice(0,4)) === 4 || this.getDistanceWheel(this.cards.slice(1,5)) === 4;
+  }
+
+  /**
+   * Determines if the hand is any type of straight draw (open-ended or inside, standard or wheel).
+   * Returns true if any of the other straight draw methods return true.
+   * 
+   * @returns {boolean} True if the hand is any type of straight draw, false otherwise
+   * @example
+   * const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', '9h']);
+   * evaluator.isStraightDraw(); // Returns true (open-ended straight draw)
+   * 
+   * @example
+   * const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', '8h']);
+   * evaluator.isStraightDraw(); // Returns true (inside straight draw)
+   */
+  isStraightDraw() {
+    if (this.evaluation.isStraightDraw !== undefined) return this.evaluation.isStraightDraw;
+    if (this.evaluation.isOpenEndedStraightDraw === undefined) this.isOpenEndedStraightDraw();
+    if (this.evaluation.isInsideStraightDraw === undefined) this.isInsideStraightDraw();
+    return this.evaluation.isStraightDraw = this.evaluation.isOpenEndedStraightDraw || this.evaluation.isInsideStraightDraw;
   }
 
   // ==================== HIGH CARD ====================
