@@ -166,30 +166,30 @@ class HandEvaluator {
     this.evaluation = {};
     
     // Call all evaluation methods - they will populate this.evaluation
-    this.isFourOfAKind();
-    this.isFullHouse();
-    this.isThreeOfAKind();
-    this.isTwoPair();
-    this.isPair();
-    this.isFlush();
-    this.isTopPair();
-    this.isMiddlePair();
-    this.isBottomPair();
-    this.isTopAndMiddlePair();
-    this.isTopAndBottomPair();
-    this.isMiddleAndBottomPair();
-    this.isTopThreeOfAKind();
-    this.isMiddleThreeOfAKind();
-    this.isBottomThreeOfAKind();
-    this.isFlushDraw();
-    this.isBackdoorFlushDraw();
-    this.isStraight();
-    this.isRoyalFlush();
-    this.isStraightFlush();
-    this.isOpenEndedStraightDraw();
-    this.isInsideStraightDraw();
-    this.isStraightDraw();
-    this.isHighCard();
+    this.#isFourOfAKind();
+    this.#isFullHouse();
+    this.#isThreeOfAKind();
+    this.#isTwoPair();
+    this.#isPair();
+    this.#isFlush();
+    this.#isTopPair();
+    this.#isMiddlePair();
+    this.#isBottomPair();
+    this.#isTopAndMiddlePair();
+    this.#isTopAndBottomPair();
+    this.#isMiddleAndBottomPair();
+    this.#isTopThreeOfAKind();
+    this.#isMiddleThreeOfAKind();
+    this.#isBottomThreeOfAKind();
+    this.#isFlushDraw();
+    this.#isBackdoorFlushDraw();
+    this.#isStraight();
+    this.#isRoyalFlush();
+    this.#isStraightFlush();
+    this.#isOpenEndedStraightDraw();
+    this.#isInsideStraightDraw();
+    this.#isStraightDraw();
+    this.#isHighCard();
     
     // Add keyCards and kickerCards before restoring original evaluation
     // (these methods need access to this.evaluation)
@@ -281,18 +281,12 @@ class HandEvaluator {
    * Sorts cards from highest to lowest rank using standard poker ranking (Ace high).
    * Modifies the array in place. If no cards parameter is provided, sorts this.cards.
    * 
+   * @private
    * @param {string[]} [cards=null] - Optional array of card strings to sort.
    *   If null or undefined, sorts this.cards instead.
    * @returns {void}
-   * @example
-   * const evaluator = new HandEvaluator(['2s', 'As', 'Ks', '5s', 'Ts']);
-   * evaluator.sort(); // Modifies evaluator.cards to ['As', 'Ks', 'Ts', '5s', '2s']
-   * 
-   * @example
-   * const cards = ['2s', 'As', 'Ks'];
-   * evaluator.sort(cards); // Modifies cards array to ['As', 'Ks', '2s']
    */
-  sort(cards = null) {
+  #sort(cards = null) {
     const cardsToSort = cards || this.cards;
     cardsToSort.sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
   }
@@ -302,14 +296,12 @@ class HandEvaluator {
    * Modifies the array in place. Used for evaluating wheel straights (A-2-3-4-5).
    * If no cards parameter is provided, sorts this.cards.
    * 
+   * @private
    * @param {string[]} [cards=null] - Optional array of card strings to sort.
    *   If null or undefined, sorts this.cards instead.
    * @returns {void}
-   * @example
-   * const evaluator = new HandEvaluator(['As', '2s', '3s', '4s', '5s']);
-   * evaluator.sortWheel(); // Modifies evaluator.cards to ['5s', '4s', '3s', '2s', 'As']
    */
-  sortWheel(cards = null) {
+  #sortWheel(cards = null) {
     const cardsToSort = cards || this.cards;
     cardsToSort.sort((a, b) => this.#getRankValueWheel(b) - this.#getRankValueWheel(a));
   }
@@ -318,18 +310,12 @@ class HandEvaluator {
    * Calculates the distance (rank difference) between the highest and lowest card.
    * Uses standard poker ranking (Ace high). Distance of 4 indicates a possible straight.
    * 
+   * @private
    * @param {string[]} [cards=null] - Optional array of card strings to evaluate.
    *   If null or undefined, uses this.cards instead.
    * @returns {number} Distance between highest and lowest card (0-12)
-   * @example
-   * const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', 'Ts']);
-   * evaluator.getDistance(); // Returns 4 (A=13, T=9, 13-9=4)
-   * 
-   * @example
-   * evaluator.getDistance(['As', '2s', '3s', '4s', '5s']);
-   * // Returns 12 (A=13, 2=1, 13-1=12)
    */
-  getDistance(cards = null) {
+  #getDistance(cards = null) {
     if (cards) {
       // If cards array provided, sort a copy and calculate distance
       if (cards.length === 0) return 0;
@@ -338,7 +324,7 @@ class HandEvaluator {
     }
       // If no cards provided, use instance cards property
     if (this.cards.length === 0) return 0;
-    this.sort();
+    this.#sort();
     return this.#getRankValue(this.cards[0]) - this.#getRankValue(this.cards[this.cards.length - 1]);
   }
 
@@ -346,14 +332,12 @@ class HandEvaluator {
    * Calculates the distance (rank difference) between the highest and lowest card using wheel ranking.
    * Uses wheel ranking (Ace low). Distance of 4 indicates a possible wheel straight (A-2-3-4-5).
    * 
+   * @private
    * @param {string[]} [cards=null] - Optional array of card strings to evaluate.
    *   If null or undefined, uses this.cards instead.
    * @returns {number} Distance between highest and lowest card using wheel ranking (0-12)
-   * @example
-   * const evaluator = new HandEvaluator(['As', '2s', '3s', '4s', '5s']);
-   * evaluator.getDistanceWheel(); // Returns 4 (5=5, A=1, 5-1=4) - wheel straight
    */
-  getDistanceWheel(cards = null) {
+  #getDistanceWheel(cards = null) {
     if (cards) {
       // If cards array provided, sort a copy using wheel values and calculate distance
       if (cards.length === 0) return 0;
@@ -362,24 +346,18 @@ class HandEvaluator {
     }
     // If no cards provided, use instance cards property
     if (this.cards.length === 0) return 0;
-    this.sortWheel();
+    this.#sortWheel();
     return this.#getRankValueWheel(this.cards[0]) - this.#getRankValueWheel(this.cards[this.cards.length - 1]);
   }
 
   /**
    * Counts the occurrences of each suit in the hand.
    * 
+   * @private
    * @returns {Object<string, number>} Object mapping suit to count:
    *   { s: count, h: count, d: count, c: count }
-   * @example
-   * const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', 'Ts']);
-   * evaluator.countSuits(); // Returns { s: 5 }
-   * 
-   * @example
-   * const evaluator = new HandEvaluator(['As', 'Kh', 'Qd', 'Jc', 'Ts']);
-   * evaluator.countSuits(); // Returns { s: 2, h: 1, d: 1, c: 1 }
    */
-  countSuits() {
+  #countSuits() {
     return this.cards.reduce((acc, card) => ({ ...acc, [card.slice(-1)]: (acc[card.slice(-1)] || 0) + 1 }), {});
   }
 
@@ -387,17 +365,11 @@ class HandEvaluator {
    * Counts the occurrences of each rank and returns sorted counts (descending).
    * Used to identify pairs, three of a kind, four of a kind, etc.
    * 
+   * @private
    * @returns {number[]} Array of rank counts sorted in descending order
-   * @example
-   * const evaluator = new HandEvaluator(['As', 'Ah', 'Ad', 'Kc', 'Ks']);
-   * evaluator.countRanks(); // Returns [3, 2] (three aces, two kings)
-   * 
-   * @example
-   * const evaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Kc', 'Qs']);
-   * evaluator.countRanks(); // Returns [2, 2, 1] (two aces, two kings, one queen)
    */
-  countRanks() {
-    this.sort();
+  #countRanks() {
+    this.#sort();
     const rankCounts = this.cards.reduce((acc, card) => (acc[card.slice(0, -1)] = (acc[card.slice(0, -1)] || 0) + 1, acc), {});
     return Object.values(rankCounts).sort((a, b) => b - a);
   }
@@ -412,7 +384,7 @@ class HandEvaluator {
    * // Returns { A: 3, K: 2 }
    */
   #getRankCounts() {
-    this.sort();
+    this.#sort();
     return this.cards.reduce((acc, card) => (acc[card.slice(0, -1)] = (acc[card.slice(0, -1)] || 0) + 1, acc), {});
   }
 
@@ -446,7 +418,7 @@ class HandEvaluator {
    * // Returns [1, 1, 1, 2] (gap of 2 between J and 9)
    */
   #getGaps() {
-    this.sort();
+    this.#sort();
     const gaps = [];
     for (let i = 0; i < 4; i++) {
       gaps.push(this.#getRankValue(this.cards[i]) - this.#getRankValue(this.cards[i + 1]));
@@ -466,7 +438,7 @@ class HandEvaluator {
    * // Returns [1, 1, 1, 1] (all gaps are 1)
    */
   #getGapsWheel() {
-    this.sortWheel();
+    this.#sortWheel();
     const gaps = [];
     for (let i = 0; i < 4; i++) {
       gaps.push(this.#getRankValueWheel(this.cards[i]) - this.#getRankValueWheel(this.cards[i + 1]));
@@ -484,9 +456,9 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ah', 'Ad', 'Ac', 'Ks']);
    * evaluator.isFourOfAKind(); // Returns true
    */
-  isFourOfAKind() {
+  #isFourOfAKind() {
     if (this.evaluation.isFourOfAKind !== undefined) return this.evaluation.isFourOfAKind;
-    const ranks = this.countRanks();
+    const ranks = this.#countRanks();
     return this.evaluation.isFourOfAKind = ranks[0] === 4 && ranks[1] === 1;
   }
 
@@ -498,9 +470,9 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ah', 'Ad', 'Kc', 'Ks']);
    * evaluator.isFullHouse(); // Returns true
    */
-  isFullHouse() {
+  #isFullHouse() {
     if (this.evaluation.isFullHouse !== undefined) return this.evaluation.isFullHouse;
-    const ranks = this.countRanks();
+    const ranks = this.#countRanks();
     return this.evaluation.isFullHouse = ranks[0] === 3 && ranks[1] === 2;
   }
 
@@ -512,9 +484,9 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ah', 'Ad', 'Kc', 'Qs']);
    * evaluator.isThreeOfAKind(); // Returns true
    */
-  isThreeOfAKind() {
+  #isThreeOfAKind() {
     if (this.evaluation.isThreeOfAKind !== undefined) return this.evaluation.isThreeOfAKind;
-    const ranks = this.countRanks();
+    const ranks = this.#countRanks();
     return this.evaluation.isThreeOfAKind = ranks[0] === 3 && ranks[1] === 1 && ranks[2] === 1;
   }
 
@@ -526,9 +498,9 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Kc', 'Qs']);
    * evaluator.isTwoPair(); // Returns true
    */
-  isTwoPair() {
+  #isTwoPair() {
     if (this.evaluation.isTwoPair !== undefined) return this.evaluation.isTwoPair;
-    const ranks = this.countRanks();
+    const ranks = this.#countRanks();
     return this.evaluation.isTwoPair = ranks[0] === 2 && ranks[1] === 2 && ranks[2] === 1;
   }
 
@@ -540,9 +512,9 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Qc', 'Js']);
    * evaluator.isPair(); // Returns true
    */
-  isPair() {
+  #isPair() {
     if (this.evaluation.isPair !== undefined) return this.evaluation.isPair;
-    const ranks = this.countRanks();
+    const ranks = this.#countRanks();
     return this.evaluation.isPair = ranks[0] === 2 && ranks[1] === 1 && ranks[2] === 1 && ranks[3] === 1;
   }
 
@@ -557,9 +529,9 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Qc', 'Js']);
    * evaluator.isTopPair(); // Returns true (pair of aces, highest card)
    */
-  isTopPair() {
+  #isTopPair() {
     if (this.evaluation.isTopPair !== undefined) return this.evaluation.isTopPair;
-    if (this.evaluation.isPair === undefined) this.isPair();
+    if (this.evaluation.isPair === undefined) this.#isPair();
     if (!this.evaluation.isPair) return this.evaluation.isTopPair = false;
     const rankCounts = this.#getRankCounts();
     return this.evaluation.isTopPair = rankCounts[this.cards[0].slice(0, -1)] === 2;
@@ -574,10 +546,10 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Kh', 'Kd', 'Qc', 'Js']);
    * evaluator.isMiddlePair(); // Returns true (pair of kings, not highest or lowest)
    */
-  isMiddlePair() {
+  #isMiddlePair() {
     if (this.evaluation.isMiddlePair !== undefined) return this.evaluation.isMiddlePair;
-    if (this.evaluation.isPair === undefined) this.isPair();
-    if (this.evaluation.isTwoPair === undefined) this.isTwoPair();
+    if (this.evaluation.isPair === undefined) this.#isPair();
+    if (this.evaluation.isTwoPair === undefined) this.#isTwoPair();
     if (!this.evaluation.isPair || this.evaluation.isTwoPair) return this.evaluation.isMiddlePair = false;
     const ranks = this.#getRankCountsSorted();
     return this.evaluation.isMiddlePair = ranks.length === 4 && (ranks[1].count === 2 || ranks[2].count === 2);
@@ -592,9 +564,9 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Kh', 'Qd', '2c', '2s']);
    * evaluator.isBottomPair(); // Returns true (pair of deuces, lowest card)
    */
-  isBottomPair() {
+  #isBottomPair() {
     if (this.evaluation.isBottomPair !== undefined) return this.evaluation.isBottomPair;
-    if (this.evaluation.isPair === undefined) this.isPair();
+    if (this.evaluation.isPair === undefined) this.#isPair();
     if (!this.evaluation.isPair) return this.evaluation.isBottomPair = false;
     const rankCounts = this.#getRankCounts();
     return this.evaluation.isBottomPair = rankCounts[this.cards[this.cards.length - 1].slice(0, -1)] === 2;
@@ -611,9 +583,9 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Kc', 'Qs']);
    * evaluator.isTopAndMiddlePair(); // Returns true (aces and kings)
    */
-  isTopAndMiddlePair() {
+  #isTopAndMiddlePair() {
     if (this.evaluation.isTopAndMiddlePair !== undefined) return this.evaluation.isTopAndMiddlePair;
-    if (this.evaluation.isTwoPair === undefined) this.isTwoPair();
+    if (this.evaluation.isTwoPair === undefined) this.#isTwoPair();
     if (!this.evaluation.isTwoPair) return this.evaluation.isTopAndMiddlePair = false;
     const ranks = this.#getRankCountsSorted();
     return this.evaluation.isTopAndMiddlePair = ranks[0].count === 2 && ranks[1].count === 2;
@@ -628,9 +600,9 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Qc', '2s', '2h']);
    * evaluator.isTopAndBottomPair(); // Returns true (aces and deuces)
    */
-  isTopAndBottomPair() {
+  #isTopAndBottomPair() {
     if (this.evaluation.isTopAndBottomPair !== undefined) return this.evaluation.isTopAndBottomPair;
-    if (this.evaluation.isTwoPair === undefined) this.isTwoPair();
+    if (this.evaluation.isTwoPair === undefined) this.#isTwoPair();
     if (!this.evaluation.isTwoPair) return this.evaluation.isTopAndBottomPair = false;
     const ranks = this.#getRankCountsSorted();
     return this.evaluation.isTopAndBottomPair = ranks[0].count === 2 && ranks[ranks.length - 1].count === 2;
@@ -645,9 +617,9 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Kh', 'Kd', '2c', '2s']);
    * evaluator.isMiddleAndBottomPair(); // Returns true (kings and deuces)
    */
-  isMiddleAndBottomPair() {
+  #isMiddleAndBottomPair() {
     if (this.evaluation.isMiddleAndBottomPair !== undefined) return this.evaluation.isMiddleAndBottomPair;
-    if (this.evaluation.isTwoPair === undefined) this.isTwoPair();
+    if (this.evaluation.isTwoPair === undefined) this.#isTwoPair();
     if (!this.evaluation.isTwoPair) return this.evaluation.isMiddleAndBottomPair = false;
     const ranks = this.#getRankCountsSorted();
     return this.evaluation.isMiddleAndBottomPair = ranks.length === 3 && ranks[1].count === 2 && ranks[2].count === 2;
@@ -664,9 +636,9 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ah', 'Ad', 'Kc', 'Qs']);
    * evaluator.isTopThreeOfAKind(); // Returns true (three aces)
    */
-  isTopThreeOfAKind() {
+  #isTopThreeOfAKind() {
     if (this.evaluation.isTopThreeOfAKind !== undefined) return this.evaluation.isTopThreeOfAKind;
-    if (this.evaluation.isThreeOfAKind === undefined) this.isThreeOfAKind();
+    if (this.evaluation.isThreeOfAKind === undefined) this.#isThreeOfAKind();
     if (!this.evaluation.isThreeOfAKind) return this.evaluation.isTopThreeOfAKind = false;
     const rankCounts = this.#getRankCounts();
     return this.evaluation.isTopThreeOfAKind = rankCounts[this.cards[0].slice(0, -1)] === 3;
@@ -681,9 +653,9 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Kh', 'Kd', 'Kc', 'Qs']);
    * evaluator.isMiddleThreeOfAKind(); // Returns true (three kings)
    */
-  isMiddleThreeOfAKind() {
+  #isMiddleThreeOfAKind() {
     if (this.evaluation.isMiddleThreeOfAKind !== undefined) return this.evaluation.isMiddleThreeOfAKind;
-    if (this.evaluation.isThreeOfAKind === undefined) this.isThreeOfAKind();
+    if (this.evaluation.isThreeOfAKind === undefined) this.#isThreeOfAKind();
     if (!this.evaluation.isThreeOfAKind) return this.evaluation.isMiddleThreeOfAKind = false;
     const ranks = this.#getRankCountsSorted();
     return this.evaluation.isMiddleThreeOfAKind = ranks.length === 3 && ranks[1].count === 3;
@@ -698,9 +670,9 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Kh', '2d', '2c', '2s']);
    * evaluator.isBottomThreeOfAKind(); // Returns true (three deuces)
    */
-  isBottomThreeOfAKind() {
+  #isBottomThreeOfAKind() {
     if (this.evaluation.isBottomThreeOfAKind !== undefined) return this.evaluation.isBottomThreeOfAKind;
-    if (this.evaluation.isThreeOfAKind === undefined) this.isThreeOfAKind();
+    if (this.evaluation.isThreeOfAKind === undefined) this.#isThreeOfAKind();
     if (!this.evaluation.isThreeOfAKind) return this.evaluation.isBottomThreeOfAKind = false;
     const rankCounts = this.#getRankCounts();
     return this.evaluation.isBottomThreeOfAKind = rankCounts[this.cards[this.cards.length - 1].slice(0, -1)] === 3;
@@ -716,9 +688,9 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', '9s']);
    * evaluator.isFlush(); // Returns true (all spades)
    */
-  isFlush() {
+  #isFlush() {
     if (this.evaluation.isFlush !== undefined) return this.evaluation.isFlush;
-    const suits = this.countSuits();
+    const suits = this.#countSuits();
     return this.evaluation.isFlush = Object.values(suits).some(count => count === 5);
   }
 
@@ -731,11 +703,11 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', '9h']);
    * evaluator.isFlushDraw(); // Returns true (4 spades, 1 heart)
    */
-  isFlushDraw() {
+  #isFlushDraw() {
     if (this.evaluation.isFlushDraw !== undefined) return this.evaluation.isFlushDraw;
-    if (this.evaluation.isFlush === undefined) this.isFlush();
+    if (this.evaluation.isFlush === undefined) this.#isFlush();
     if (this.evaluation.isFlush) return this.evaluation.isFlushDraw = false;
-    const suits = this.countSuits();
+    const suits = this.#countSuits();
     return this.evaluation.isFlushDraw = Object.values(suits).some(count => count === 4);
   }
 
@@ -748,12 +720,12 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Jh', '9h']);
    * evaluator.isBackdoorFlushDraw(); // Returns true (3 spades, 2 hearts)
    */
-  isBackdoorFlushDraw() {
+  #isBackdoorFlushDraw() {
     if (this.evaluation.isBackdoorFlushDraw !== undefined) return this.evaluation.isBackdoorFlushDraw;
-    if (this.evaluation.isFlush === undefined) this.isFlush();
-    if (this.evaluation.isFlushDraw === undefined) this.isFlushDraw();
+    if (this.evaluation.isFlush === undefined) this.#isFlush();
+    if (this.evaluation.isFlushDraw === undefined) this.#isFlushDraw();
     if (this.evaluation.isFlush || this.evaluation.isFlushDraw) return this.evaluation.isBackdoorFlushDraw = false;
-    const suits = this.countSuits();
+    const suits = this.#countSuits();
     return this.evaluation.isBackdoorFlushDraw = Object.values(suits).some(count => count === 3);
   }
 
@@ -773,18 +745,18 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', '2s', '3s', '4s', '5s']);
    * evaluator.isStraight(); // Returns true (wheel: A-2-3-4-5)
    */
-  isStraight() {
+  #isStraight() {
     if (this.evaluation.isStraight !== undefined) return this.evaluation.isStraight;
-    if (this.evaluation.isPair === undefined) this.isPair();
-    if (this.evaluation.isTwoPair === undefined) this.isTwoPair();
-    if (this.evaluation.isThreeOfAKind === undefined) this.isThreeOfAKind();
-    if (this.evaluation.isFullHouse === undefined) this.isFullHouse();
-    if (this.evaluation.isFourOfAKind === undefined) this.isFourOfAKind();
+    if (this.evaluation.isPair === undefined) this.#isPair();
+    if (this.evaluation.isTwoPair === undefined) this.#isTwoPair();
+    if (this.evaluation.isThreeOfAKind === undefined) this.#isThreeOfAKind();
+    if (this.evaluation.isFullHouse === undefined) this.#isFullHouse();
+    if (this.evaluation.isFourOfAKind === undefined) this.#isFourOfAKind();
     if (this.evaluation.isPair || this.evaluation.isTwoPair || this.evaluation.isThreeOfAKind || this.evaluation.isFullHouse || this.evaluation.isFourOfAKind) return this.evaluation.isStraight = false;
-    this.sort();
-    const distance = this.getDistance();
+    this.#sort();
+    const distance = this.#getDistance();
     if (distance === 4) return this.evaluation.isStraight = true;
-    if (this.isStraightWheel()) return this.evaluation.isStraight = true;
+      if (this.#isStraightWheel()) return this.evaluation.isStraight = true;
     return this.evaluation.isStraight = false;
   }
 
@@ -797,16 +769,16 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', '2s', '3s', '4s', '5s']);
    * evaluator.isStraightWheel(); // Returns true (wheel: A-2-3-4-5)
    */
-  isStraightWheel() {
+  #isStraightWheel() {
     if (this.evaluation.isStraightWheel !== undefined) return this.evaluation.isStraightWheel;
-    if (this.evaluation.isPair === undefined) this.isPair();
-    if (this.evaluation.isTwoPair === undefined) this.isTwoPair();
-    if (this.evaluation.isThreeOfAKind === undefined) this.isThreeOfAKind();
-    if (this.evaluation.isFullHouse === undefined) this.isFullHouse();
-    if (this.evaluation.isFourOfAKind === undefined) this.isFourOfAKind();
+    if (this.evaluation.isPair === undefined) this.#isPair();
+    if (this.evaluation.isTwoPair === undefined) this.#isTwoPair();
+    if (this.evaluation.isThreeOfAKind === undefined) this.#isThreeOfAKind();
+    if (this.evaluation.isFullHouse === undefined) this.#isFullHouse();
+    if (this.evaluation.isFourOfAKind === undefined) this.#isFourOfAKind();
     if (this.evaluation.isPair || this.evaluation.isTwoPair || this.evaluation.isThreeOfAKind || this.evaluation.isFullHouse || this.evaluation.isFourOfAKind) return this.evaluation.isStraightWheel = false;
-    this.sortWheel();
-    const distance = this.getDistanceWheel();
+    this.#sortWheel();
+    const distance = this.#getDistanceWheel();
     return this.evaluation.isStraightWheel = distance === 4;
   }
 
@@ -819,10 +791,10 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', 'Ts']);
    * evaluator.isRoyalFlush(); // Returns true
    */
-  isRoyalFlush() {
+  #isRoyalFlush() {
     if (this.evaluation.isRoyalFlush !== undefined) return this.evaluation.isRoyalFlush;
-    if (this.evaluation.isFlush === undefined) this.isFlush();
-    if (this.evaluation.isStraight === undefined) this.isStraight();
+    if (this.evaluation.isFlush === undefined) this.#isFlush();
+    if (this.evaluation.isStraight === undefined) this.#isStraight();
     if (!this.evaluation.isFlush || !this.evaluation.isStraight) return this.evaluation.isRoyalFlush = false;
     const ranks = new Set(this.cards.map(c => c.slice(0, -1)));
     return this.evaluation.isRoyalFlush = ranks.has('A') && ranks.has('K') && ranks.has('Q') && ranks.has('J') && ranks.has('T');
@@ -837,11 +809,11 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['9s', '8s', '7s', '6s', '5s']);
    * evaluator.isStraightFlush(); // Returns true
    */
-  isStraightFlush() {
+  #isStraightFlush() {
     if (this.evaluation.isStraightFlush !== undefined) return this.evaluation.isStraightFlush;
-    if (this.evaluation.isFlush === undefined) this.isFlush();
-    if (this.evaluation.isStraight === undefined) this.isStraight();
-    if (this.evaluation.isRoyalFlush === undefined) this.isRoyalFlush();
+    if (this.evaluation.isFlush === undefined) this.#isFlush();
+    if (this.evaluation.isStraight === undefined) this.#isStraight();
+    if (this.evaluation.isRoyalFlush === undefined) this.#isRoyalFlush();
     return this.evaluation.isStraightFlush = this.evaluation.isFlush && this.evaluation.isStraight && !this.evaluation.isRoyalFlush;
   }
 
@@ -857,24 +829,24 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', '9h']);
    * evaluator.isOpenEndedStraightDraw(); // Returns true (needs T or 9 to complete straight)
    */
-  isOpenEndedStraightDraw() {
+  #isOpenEndedStraightDraw() {
     if (this.evaluation.isOpenEndedStraightDraw !== undefined) return this.evaluation.isOpenEndedStraightDraw;
-    if (this.evaluation.isPair === undefined) this.isPair();
-    if (this.evaluation.isTwoPair === undefined) this.isTwoPair();
-    if (this.evaluation.isThreeOfAKind === undefined) this.isThreeOfAKind();
-    if (this.evaluation.isFullHouse === undefined) this.isFullHouse();
-    if (this.evaluation.isFourOfAKind === undefined) this.isFourOfAKind();
-    if (this.evaluation.isStraight === undefined) this.isStraight();
+    if (this.evaluation.isPair === undefined) this.#isPair();
+    if (this.evaluation.isTwoPair === undefined) this.#isTwoPair();
+    if (this.evaluation.isThreeOfAKind === undefined) this.#isThreeOfAKind();
+    if (this.evaluation.isFullHouse === undefined) this.#isFullHouse();
+    if (this.evaluation.isFourOfAKind === undefined) this.#isFourOfAKind();
+    if (this.evaluation.isStraight === undefined) this.#isStraight();
     if (this.evaluation.isPair || this.evaluation.isTwoPair || this.evaluation.isThreeOfAKind || this.evaluation.isFullHouse || this.evaluation.isFourOfAKind || this.evaluation.isStraight) {
       // Check wheel equivalent before returning false
-      if (this.isOpenEndedStraightDrawWheel()) return this.evaluation.isOpenEndedStraightDraw = true;
+      if (this.#isOpenEndedStraightDrawWheel()) return this.evaluation.isOpenEndedStraightDraw = true;
       return this.evaluation.isOpenEndedStraightDraw = false;
     }
-    this.sort();
-    const result = this.getDistance(this.cards.slice(0,4)) === 3 || this.getDistance(this.cards.slice(1,5)) === 3;
+    this.#sort();
+    const result = this.#getDistance(this.cards.slice(0,4)) === 3 || this.#getDistance(this.cards.slice(1,5)) === 3;
     if (result) return this.evaluation.isOpenEndedStraightDraw = true;
     // Check wheel equivalent
-    if (this.isOpenEndedStraightDrawWheel()) return this.evaluation.isOpenEndedStraightDraw = true;
+    if (this.#isOpenEndedStraightDrawWheel()) return this.evaluation.isOpenEndedStraightDraw = true;
     return this.evaluation.isOpenEndedStraightDraw = false;
   }
 
@@ -885,17 +857,17 @@ class HandEvaluator {
    * 
    * @returns {boolean} True if the hand is a wheel-equivalent open-ended straight draw, false otherwise
    */
-  isOpenEndedStraightDrawWheel() {
+  #isOpenEndedStraightDrawWheel() {
     if (this.evaluation.isOpenEndedStraightDrawWheel !== undefined) return this.evaluation.isOpenEndedStraightDrawWheel;
-    if (this.evaluation.isPair === undefined) this.isPair();
-    if (this.evaluation.isTwoPair === undefined) this.isTwoPair();
-    if (this.evaluation.isThreeOfAKind === undefined) this.isThreeOfAKind();
-    if (this.evaluation.isFullHouse === undefined) this.isFullHouse();
-    if (this.evaluation.isFourOfAKind === undefined) this.isFourOfAKind();
-    if (this.evaluation.isStraightWheel === undefined) this.isStraightWheel();
+    if (this.evaluation.isPair === undefined) this.#isPair();
+    if (this.evaluation.isTwoPair === undefined) this.#isTwoPair();
+    if (this.evaluation.isThreeOfAKind === undefined) this.#isThreeOfAKind();
+    if (this.evaluation.isFullHouse === undefined) this.#isFullHouse();
+    if (this.evaluation.isFourOfAKind === undefined) this.#isFourOfAKind();
+    if (this.evaluation.isStraightWheel === undefined) this.#isStraightWheel();
     if (this.evaluation.isPair || this.evaluation.isTwoPair || this.evaluation.isThreeOfAKind || this.evaluation.isFullHouse || this.evaluation.isFourOfAKind || this.evaluation.isStraightWheel) return this.evaluation.isOpenEndedStraightDrawWheel = false;
-    this.sortWheel();
-    return this.evaluation.isOpenEndedStraightDrawWheel = this.getDistanceWheel(this.cards.slice(0,4)) === 3 || this.getDistanceWheel(this.cards.slice(1,5)) === 3;
+    this.#sortWheel();
+    return this.evaluation.isOpenEndedStraightDrawWheel = this.#getDistanceWheel(this.cards.slice(0,4)) === 3 || this.#getDistanceWheel(this.cards.slice(1,5)) === 3;
   }
 
   /**
@@ -908,25 +880,25 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', '9h']);
    * evaluator.isInsideStraightDraw(); // Returns true (needs T in the middle)
    */
-  isInsideStraightDraw() {
+  #isInsideStraightDraw() {
     if (this.evaluation.isInsideStraightDraw !== undefined) return this.evaluation.isInsideStraightDraw;
-    if (this.evaluation.isPair === undefined) this.isPair();
-    if (this.evaluation.isTwoPair === undefined) this.isTwoPair();
-    if (this.evaluation.isThreeOfAKind === undefined) this.isThreeOfAKind();
-    if (this.evaluation.isFullHouse === undefined) this.isFullHouse();
-    if (this.evaluation.isFourOfAKind === undefined) this.isFourOfAKind();
-    if (this.evaluation.isStraight === undefined) this.isStraight();
+    if (this.evaluation.isPair === undefined) this.#isPair();
+    if (this.evaluation.isTwoPair === undefined) this.#isTwoPair();
+    if (this.evaluation.isThreeOfAKind === undefined) this.#isThreeOfAKind();
+    if (this.evaluation.isFullHouse === undefined) this.#isFullHouse();
+    if (this.evaluation.isFourOfAKind === undefined) this.#isFourOfAKind();
+    if (this.evaluation.isStraight === undefined) this.#isStraight();
     if (this.evaluation.isPair || this.evaluation.isTwoPair || this.evaluation.isThreeOfAKind || this.evaluation.isFullHouse || this.evaluation.isFourOfAKind || this.evaluation.isStraight) {
       // Check wheel equivalent before returning false
-      if (this.isInsideStraightDrawWheel()) return this.evaluation.isInsideStraightDraw = true;
+      if (this.#isInsideStraightDrawWheel()) return this.evaluation.isInsideStraightDraw = true;
       return this.evaluation.isInsideStraightDraw = false;
     }
 
-    this.sort();
-    const result = this.getDistance(this.cards.slice(0,4)) === 4 || this.getDistance(this.cards.slice(1,5)) === 4;
+    this.#sort();
+    const result = this.#getDistance(this.cards.slice(0,4)) === 4 || this.#getDistance(this.cards.slice(1,5)) === 4;
     if (result) return this.evaluation.isInsideStraightDraw = true;
     // Check wheel equivalent
-    if (this.isInsideStraightDrawWheel()) return this.evaluation.isInsideStraightDraw = true;
+    if (this.#isInsideStraightDrawWheel()) return this.evaluation.isInsideStraightDraw = true;
     return this.evaluation.isInsideStraightDraw = false;
   }
 
@@ -937,18 +909,18 @@ class HandEvaluator {
    * 
    * @returns {boolean} True if the hand is a wheel-equivalent inside straight draw, false otherwise
    */
-  isInsideStraightDrawWheel() {
+  #isInsideStraightDrawWheel() {
     if (this.evaluation.isInsideStraightDrawWheel !== undefined) return this.evaluation.isInsideStraightDrawWheel;
-    if (this.evaluation.isPair === undefined) this.isPair();
-    if (this.evaluation.isTwoPair === undefined) this.isTwoPair();
-    if (this.evaluation.isThreeOfAKind === undefined) this.isThreeOfAKind();
-    if (this.evaluation.isFullHouse === undefined) this.isFullHouse();
-    if (this.evaluation.isFourOfAKind === undefined) this.isFourOfAKind();
-    if (this.evaluation.isStraightWheel === undefined) this.isStraightWheel();
+    if (this.evaluation.isPair === undefined) this.#isPair();
+    if (this.evaluation.isTwoPair === undefined) this.#isTwoPair();
+    if (this.evaluation.isThreeOfAKind === undefined) this.#isThreeOfAKind();
+    if (this.evaluation.isFullHouse === undefined) this.#isFullHouse();
+    if (this.evaluation.isFourOfAKind === undefined) this.#isFourOfAKind();
+    if (this.evaluation.isStraightWheel === undefined) this.#isStraightWheel();
     if (this.evaluation.isPair || this.evaluation.isTwoPair || this.evaluation.isThreeOfAKind || this.evaluation.isFullHouse || this.evaluation.isFourOfAKind || this.evaluation.isStraightWheel) return this.evaluation.isInsideStraightDrawWheel = false;
 
-    this.sortWheel();
-    return this.evaluation.isInsideStraightDrawWheel = this.getDistanceWheel(this.cards.slice(0,4)) === 4 || this.getDistanceWheel(this.cards.slice(1,5)) === 4;
+    this.#sortWheel();
+    return this.evaluation.isInsideStraightDrawWheel = this.#getDistanceWheel(this.cards.slice(0,4)) === 4 || this.#getDistanceWheel(this.cards.slice(1,5)) === 4;
   }
 
   /**
@@ -964,10 +936,10 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', '8h']);
    * evaluator.isStraightDraw(); // Returns true (inside straight draw)
    */
-  isStraightDraw() {
+  #isStraightDraw() {
     if (this.evaluation.isStraightDraw !== undefined) return this.evaluation.isStraightDraw;
-    if (this.evaluation.isOpenEndedStraightDraw === undefined) this.isOpenEndedStraightDraw();
-    if (this.evaluation.isInsideStraightDraw === undefined) this.isInsideStraightDraw();
+    if (this.evaluation.isOpenEndedStraightDraw === undefined) this.#isOpenEndedStraightDraw();
+    if (this.evaluation.isInsideStraightDraw === undefined) this.#isInsideStraightDraw();
     return this.evaluation.isStraightDraw = this.evaluation.isOpenEndedStraightDraw || this.evaluation.isInsideStraightDraw;
   }
 
@@ -982,14 +954,14 @@ class HandEvaluator {
    */
   #getStraightCards() {
     // Try standard straight first
-    this.sort();
+    this.#sort();
     const gaps = this.#getGaps();
     if (gaps.every(g => g === 1)) {
       return [...this.cards].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
     }
     
     // Try wheel straight
-    this.sortWheel();
+    this.#sortWheel();
     const gapsWheel = this.#getGapsWheel();
     if (gapsWheel.every(g => g === 1)) {
       // Convert back to standard sorting for return
@@ -1008,29 +980,29 @@ class HandEvaluator {
    */
   #getStraightDrawCards() {
     // Try standard straight draw
-    this.sort();
+    this.#sort();
     const firstFour = this.cards.slice(0, 4);
     const lastFour = this.cards.slice(1, 5);
     
-    const firstFourDist = this.getDistance(firstFour);
+    const firstFourDist = this.#getDistance(firstFour);
     if (firstFourDist === 3 || firstFourDist === 4) {
       return [...firstFour].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
     }
-    const lastFourDist = this.getDistance(lastFour);
+    const lastFourDist = this.#getDistance(lastFour);
     if (lastFourDist === 3 || lastFourDist === 4) {
       return [...lastFour].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
     }
     
     // Try wheel straight draw
-    this.sortWheel();
+    this.#sortWheel();
     const firstFourWheel = this.cards.slice(0, 4);
     const lastFourWheel = this.cards.slice(1, 5);
     
-    const firstFourDistWheel = this.getDistanceWheel(firstFourWheel);
+    const firstFourDistWheel = this.#getDistanceWheel(firstFourWheel);
     if (firstFourDistWheel === 3 || firstFourDistWheel === 4) {
       return [...firstFourWheel].sort((a, b) => this.#getRankValueWheel(b) - this.#getRankValueWheel(a));
     }
-    const lastFourDistWheel = this.getDistanceWheel(lastFourWheel);
+    const lastFourDistWheel = this.#getDistanceWheel(lastFourWheel);
     if (lastFourDistWheel === 3 || lastFourDistWheel === 4) {
       return [...lastFourWheel].sort((a, b) => this.#getRankValueWheel(b) - this.#getRankValueWheel(a));
     }
@@ -1051,7 +1023,7 @@ class HandEvaluator {
     
     // Calculate these once and reuse
     const rankCounts = this.#getRankCounts();
-    const suits = this.countSuits();
+    const suits = this.#countSuits();
     
     // Use evaluation results directly - no re-checking
     // Check made hands in priority order
@@ -1150,15 +1122,15 @@ class HandEvaluator {
    * const evaluator = new HandEvaluator(['As', 'Kh', 'Qd', 'Jc', '9s']);
    * evaluator.isHighCard(); // Returns true (no made hand)
    */
-  isHighCard() {
+  #isHighCard() {
     if (this.evaluation.isHighCard !== undefined) return this.evaluation.isHighCard;
-    if (this.evaluation.isPair === undefined) this.isPair();
-    if (this.evaluation.isTwoPair === undefined) this.isTwoPair();
-    if (this.evaluation.isThreeOfAKind === undefined) this.isThreeOfAKind();
-    if (this.evaluation.isFullHouse === undefined) this.isFullHouse();
-    if (this.evaluation.isFourOfAKind === undefined) this.isFourOfAKind();
-    if (this.evaluation.isFlush === undefined) this.isFlush();
-    if (this.evaluation.isStraight === undefined) this.isStraight();
+    if (this.evaluation.isPair === undefined) this.#isPair();
+    if (this.evaluation.isTwoPair === undefined) this.#isTwoPair();
+    if (this.evaluation.isThreeOfAKind === undefined) this.#isThreeOfAKind();
+    if (this.evaluation.isFullHouse === undefined) this.#isFullHouse();
+    if (this.evaluation.isFourOfAKind === undefined) this.#isFourOfAKind();
+    if (this.evaluation.isFlush === undefined) this.#isFlush();
+    if (this.evaluation.isStraight === undefined) this.#isStraight();
     return this.evaluation.isHighCard = !this.evaluation.isPair && !this.evaluation.isTwoPair && !this.evaluation.isThreeOfAKind && !this.evaluation.isFullHouse && !this.evaluation.isFourOfAKind && !this.evaluation.isFlush && !this.evaluation.isStraight;
   }
 }

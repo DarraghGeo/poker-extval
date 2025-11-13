@@ -49,12 +49,6 @@ const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', 'Ts', '9s']);
 // Access evaluation results
 const evaluation = evaluator.evaluation;
 // Object with keys for each 5-card combination
-
-// Use utility methods
-evaluator.sort(); // Sort cards by rank
-evaluator.getDistance(); // Get distance between highest and lowest card
-evaluator.countSuits(); // Count suits in hand
-evaluator.countRanks(); // Count ranks in hand
 ```
 
 ### Evaluating Multiple Card Hands
@@ -126,11 +120,16 @@ The `evaluateHand()` function returns an object where:
 - `isBackdoorFlushDraw` - Three cards of the same suit (two away from flush)
 - `isOpenEndedStraightDraw` - One card away from straight on either end
 - `isInsideStraightDraw` - One card away from straight (needed card in middle)
+- `isStraightDraw` - Any type of straight draw (open-ended or inside, standard or wheel)
 
 #### Wheel Straight Support
 - `isStraightWheel` - Wheel straight (A-2-3-4-5)
 - `isOpenEndedStraightDrawWheel` - Open-ended draw using wheel ranking
 - `isInsideStraightDrawWheel` - Inside draw using wheel ranking
+
+#### Card Arrays
+- `keyCards` - Array of cards (sorted) that constitute the made hand or draw
+- `kickerCards` - Array of cards (sorted) that don't constitute the made hand or draw
 
 ### Example Response
 
@@ -159,7 +158,10 @@ The `evaluateHand()` function returns an object where:
     "isBackdoorFlushDraw": false,
     "isOpenEndedStraightDraw": false,
     "isInsideStraightDraw": false,
-    "isHighCard": false
+    "isStraightDraw": false,
+    "isHighCard": false,
+    "keyCards": ["As", "Ks", "Qs", "Js", "Ts"],
+    "kickerCards": []
   }
 }
 ```
@@ -265,16 +267,14 @@ new HandEvaluator(cards)
 
 Creates a new HandEvaluator instance.
 
-#### Methods
+**Parameters:**
+- `cards` (string[]): Array of 5 or more card strings
 
-- `sort(cards?)` - Sort cards by rank (highest to lowest)
-- `sortWheel(cards?)` - Sort cards using wheel ranking (Ace low)
-- `getDistance(cards?)` - Calculate distance between highest and lowest card
-- `getDistanceWheel(cards?)` - Calculate distance using wheel ranking
-- `countSuits()` - Count occurrences of each suit
-- `countRanks()` - Count occurrences of each rank (sorted)
+**Properties:**
+- `evaluation` - Object mapping sorted hand strings to evaluation objects (same format as `evaluateHand()` return value)
+- `cards` - Array of input cards
 
-All evaluation methods (e.g., `isPair()`, `isFlush()`, etc.) are available but typically accessed through the `evaluation` property.
+**Note**: All internal methods are private. Use the `evaluation` property to access evaluation results.
 
 ## License
 
