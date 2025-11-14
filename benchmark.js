@@ -314,104 +314,87 @@ function benchmarkCardCounts() {
 }
 
 /**
- * Benchmarks individual evaluation methods
+ * Benchmarks individual evaluation methods (via public API)
+ * Note: Methods are private, so we benchmark through evaluation property access
  */
 function benchmarkIndividualMethods() {
   console.log('\n' + '='.repeat(60));
-  console.log('BENCHMARK: Individual Method Performance');
+  console.log('BENCHMARK: Individual Property Access Performance');
   console.log('='.repeat(60));
+  console.log('Note: Methods are private, benchmarking property access instead');
 
-  const evaluator = new HandEvaluator(TEST_HANDS.royalFlush);
-  const methods = [
-    'isFourOfAKind',
-    'isFullHouse',
-    'isThreeOfAKind',
-    'isTwoPair',
-    'isPair',
-    'isFlush',
-    'isStraight',
-    'isRoyalFlush',
-    'isStraightFlush',
-    'isOpenEndedStraightDraw',
-    'isInsideStraightDraw',
-    'isHighCard',
+  const testHands = [
+    { name: 'Royal Flush', cards: TEST_HANDS.royalFlush, property: 'isRoyalFlush' },
+    { name: 'Straight Flush', cards: TEST_HANDS.straightFlush, property: 'isStraightFlush' },
+    { name: 'Four of a Kind', cards: TEST_HANDS.fourOfAKind, property: 'isFourOfAKind' },
+    { name: 'Full House', cards: TEST_HANDS.fullHouse, property: 'isFullHouse' },
+    { name: 'Flush', cards: TEST_HANDS.flush, property: 'isFlush' },
+    { name: 'Straight', cards: TEST_HANDS.straight, property: 'isStraight' },
+    { name: 'Three of a Kind', cards: TEST_HANDS.threeOfAKind, property: 'isThreeOfAKind' },
+    { name: 'Two Pair', cards: TEST_HANDS.twoPair, property: 'isTwoPair' },
+    { name: 'Pair', cards: TEST_HANDS.pair, property: 'isPair' },
+    { name: 'High Card', cards: TEST_HANDS.highCard, property: 'isHighCard' },
   ];
 
   const results = [];
-  for (const methodName of methods) {
-    const benchmark = new Benchmark(`Method: ${methodName}`);
+  for (const testHand of testHands) {
+    const benchmark = new Benchmark(`Property: ${testHand.property}`);
     const result = benchmark.run(() => {
-      evaluator[methodName]();
+      const evaluation = evaluateHand(testHand.cards);
+      const evaluationKey = Object.keys(evaluation)[0];
+      return evaluation[evaluationKey][testHand.property];
     }, 5000);
+    result.property = testHand.property;
     results.push(result);
-    console.log(`${methodName.padEnd(30)}: ${result.avg}ms avg, ${result.opsPerSec} ops/sec`);
+    console.log(`${testHand.property.padEnd(30)}: ${result.avg}ms avg, ${result.opsPerSec} ops/sec`);
   }
 
   return results;
 }
 
 /**
- * Benchmarks utility methods (sort, getDistance, etc.)
+ * Benchmarks utility method performance (via public API)
+ * Note: Methods are private, so we benchmark through evaluation results
  */
 function benchmarkUtilityMethods() {
   console.log('\n' + '='.repeat(60));
-  console.log('BENCHMARK: Utility Method Performance');
+  console.log('BENCHMARK: Utility Method Performance (via Evaluation)');
   console.log('='.repeat(60));
-
-  const evaluator = new HandEvaluator(TEST_HANDS.straight);
-  const cards = ['As', 'Ks', 'Qs', 'Js', 'Ts'];
+  console.log('Note: Methods are private, benchmarking through evaluation results');
 
   const results = [];
 
-  // Sort method
-  const sortBenchmark = new Benchmark('sort()');
+  // Benchmark evaluation that uses sorting internally
+  const sortBenchmark = new Benchmark('Evaluation (uses sort internally)');
   const sortResult = sortBenchmark.run(() => {
-    const cardsCopy = [...cards];
-    evaluator.sort(cardsCopy);
+    evaluateHand(['2s', 'As', 'Ks', '5s', 'Ts']); // Requires sorting
   }, 10000);
   results.push(sortResult);
-  console.log(`${'sort()'.padEnd(30)}: ${sortResult.avg}ms avg, ${sortResult.opsPerSec} ops/sec`);
+  console.log(`${'Evaluation with sorting'.padEnd(30)}: ${sortResult.avg}ms avg, ${sortResult.opsPerSec} ops/sec`);
 
-  // sortWheel method
-  const sortWheelBenchmark = new Benchmark('sortWheel()');
-  const sortWheelResult = sortWheelBenchmark.run(() => {
-    const cardsCopy = [...cards];
-    evaluator.sortWheel(cardsCopy);
-  }, 10000);
-  results.push(sortWheelResult);
-  console.log(`${'sortWheel()'.padEnd(30)}: ${sortWheelResult.avg}ms avg, ${sortWheelResult.opsPerSec} ops/sec`);
-
-  // getDistance method
-  const distanceBenchmark = new Benchmark('getDistance()');
+  // Benchmark evaluation that uses distance calculation
+  const distanceBenchmark = new Benchmark('Evaluation (uses distance)');
   const distanceResult = distanceBenchmark.run(() => {
-    evaluator.getDistance(cards);
+    evaluateHand(['As', 'Ks', 'Qs', 'Js', 'Ts']); // Straight uses distance
   }, 10000);
   results.push(distanceResult);
-  console.log(`${'getDistance()'.padEnd(30)}: ${distanceResult.avg}ms avg, ${distanceResult.opsPerSec} ops/sec`);
+  console.log(`${'Evaluation with distance'.padEnd(30)}: ${distanceResult.avg}ms avg, ${distanceResult.opsPerSec} ops/sec`);
 
-  // getDistanceWheel method
-  const distanceWheelBenchmark = new Benchmark('getDistanceWheel()');
-  const distanceWheelResult = distanceWheelBenchmark.run(() => {
-    evaluator.getDistanceWheel(cards);
-  }, 10000);
-  results.push(distanceWheelResult);
-  console.log(`${'getDistanceWheel()'.padEnd(30)}: ${distanceWheelResult.avg}ms avg, ${distanceWheelResult.opsPerSec} ops/sec`);
-
-  // countSuits method
-  const suitsBenchmark = new Benchmark('countSuits()');
+  // Benchmark evaluation that uses suit counting
+  const suitsBenchmark = new Benchmark('Evaluation (uses suit counting)');
   const suitsResult = suitsBenchmark.run(() => {
-    evaluator.countSuits();
+    evaluateHand(['As', 'Ks', 'Qs', 'Js', '9s']); // Flush uses suit counting
   }, 10000);
   results.push(suitsResult);
-  console.log(`${'countSuits()'.padEnd(30)}: ${suitsResult.avg}ms avg, ${suitsResult.opsPerSec} ops/sec`);
+  console.log(`${'Evaluation with suit counting'.padEnd(30)}: ${suitsResult.avg}ms avg, ${suitsResult.opsPerSec} ops/sec`);
 
-  // countRanks method
-  const ranksBenchmark = new Benchmark('countRanks()');
+  // Benchmark evaluation that uses rank counting
+  const ranksBenchmark = new Benchmark('Evaluation (uses rank counting)');
   const ranksResult = ranksBenchmark.run(() => {
-    evaluator.countRanks();
+    evaluateHand(['As', 'Ah', 'Ad', 'Ac', 'Ks']); // Four of a kind uses rank counting
   }, 10000);
   results.push(ranksResult);
-  console.log(`${'countRanks()'.padEnd(30)}: ${ranksResult.avg}ms avg, ${ranksResult.opsPerSec} ops/sec`);
+  console.log(`${'Evaluation with rank counting'.padEnd(30)}: ${ranksResult.avg}ms avg, ${ranksResult.opsPerSec} ops/sec`);
 
   return results;
 }
@@ -500,6 +483,116 @@ function benchmarkWorstCase() {
   console.log(`Time per combination: ${(parseFloat(result.avg) / 21).toFixed(4)}ms`);
 
   return result;
+}
+
+/**
+ * Benchmarks strict mode vs non-strict mode performance
+ */
+function benchmarkStrictMode() {
+  console.log('\n' + '='.repeat(60));
+  console.log('BENCHMARK: Strict Mode vs Non-Strict Mode Performance');
+  console.log('='.repeat(60));
+
+  const testHands = [
+    { name: 'Two Pair', cards: TEST_HANDS.twoPair },
+    { name: 'Pair with Flush Draw', cards: ['As', 'Ah', 'Ks', 'Qs', 'Js'] },
+    { name: 'Made Flush', cards: TEST_HANDS.flush },
+    { name: 'Full House', cards: TEST_HANDS.fullHouse },
+    { name: 'High Card with Draws', cards: ['As', 'Kh', 'Qd', 'Jc', '9s'] },
+  ];
+
+  const results = [];
+
+  for (const testHand of testHands) {
+    // Strict mode
+    const strictBenchmark = new Benchmark(`Strict Mode (${testHand.name})`);
+    const strictResult = strictBenchmark.run(() => {
+      evaluateHand(testHand.cards, true);
+    }, 1000);
+    strictResult.mode = 'strict';
+    strictResult.handType = testHand.name;
+    results.push(strictResult);
+
+    // Non-strict mode
+    const nonStrictBenchmark = new Benchmark(`Non-Strict Mode (${testHand.name})`);
+    const nonStrictResult = nonStrictBenchmark.run(() => {
+      evaluateHand(testHand.cards, false);
+    }, 1000);
+    nonStrictResult.mode = 'non-strict';
+    nonStrictResult.handType = testHand.name;
+    results.push(nonStrictResult);
+
+    const overhead = ((parseFloat(strictResult.avg) - parseFloat(nonStrictResult.avg)) / parseFloat(nonStrictResult.avg) * 100).toFixed(2);
+    console.log(`${testHand.name.padEnd(25)}: Strict ${strictResult.avg}ms, Non-Strict ${nonStrictResult.avg}ms, Overhead: ${overhead}%`);
+  }
+
+  return results;
+}
+
+/**
+ * Benchmarks keyCards and kickerCards generation performance
+ */
+function benchmarkKeyCardsAndKickerCards() {
+  console.log('\n' + '='.repeat(60));
+  console.log('BENCHMARK: KeyCards and KickerCards Generation Performance');
+  console.log('='.repeat(60));
+
+  const testHands = [
+    { name: 'Royal Flush', cards: TEST_HANDS.royalFlush },
+    { name: 'Four of a Kind', cards: TEST_HANDS.fourOfAKind },
+    { name: 'Full House', cards: TEST_HANDS.fullHouse },
+    { name: 'Flush', cards: TEST_HANDS.flush },
+    { name: 'Straight', cards: TEST_HANDS.straight },
+    { name: 'Three of a Kind', cards: TEST_HANDS.threeOfAKind },
+    { name: 'Two Pair', cards: TEST_HANDS.twoPair },
+    { name: 'Pair', cards: TEST_HANDS.pair },
+    { name: 'High Card', cards: TEST_HANDS.highCard },
+    { name: 'Flush Draw', cards: ['As', 'Ks', 'Qs', 'Js', '9h'] },
+    { name: 'Straight Draw', cards: ['As', 'Kh', 'Qd', 'Jc', '9s'] },
+  ];
+
+  const results = [];
+
+  for (const testHand of testHands) {
+    const benchmark = new Benchmark(`KeyCards/KickerCards (${testHand.name})`);
+    const result = benchmark.run(() => {
+      const evaluation = evaluateHand(testHand.cards);
+      const evaluationKey = Object.keys(evaluation)[0];
+      const evalObj = evaluation[evaluationKey];
+      // Access keyCards and kickerCards to ensure they're generated
+      const keyCards = evalObj.keyCards;
+      const kickerCards = evalObj.kickerCards;
+      // Count total entries
+      const keyCardsCount = Object.values(keyCards).reduce((sum, arr) => sum + arr.length, 0);
+      const kickerCardsCount = Object.values(kickerCards).reduce((sum, arr) => sum + arr.length, 0);
+      return { keyCardsCount, kickerCardsCount };
+    }, 1000);
+    result.handType = testHand.name;
+    results.push(result);
+    console.log(`${testHand.name.padEnd(25)}: ${result.avg}ms avg, ${result.opsPerSec} ops/sec`);
+  }
+
+  // Benchmark accessing keyCards/kickerCards for specific hand types
+  console.log('\n' + '-'.repeat(60));
+  console.log('Accessing Specific KeyCards/KickerCards Properties:');
+  console.log('-'.repeat(60));
+
+  const accessBenchmark = new Benchmark('Access keyCards/kickerCards properties');
+  const accessResult = accessBenchmark.run(() => {
+    const evaluation = evaluateHand(TEST_HANDS.twoPair);
+    const evaluationKey = Object.keys(evaluation)[0];
+    const evalObj = evaluation[evaluationKey];
+    // Access multiple specific properties
+    const pairKeyCards = evalObj.keyCards.isPair;
+    const pairKickerCards = evalObj.kickerCards.isPair;
+    const twoPairKeyCards = evalObj.keyCards.isTwoPair;
+    const twoPairKickerCards = evalObj.kickerCards.isTwoPair;
+    return { pairKeyCards, pairKickerCards, twoPairKeyCards, twoPairKickerCards };
+  }, 5000);
+  results.push(accessResult);
+  console.log(`Property access: ${accessResult.avg}ms avg, ${accessResult.opsPerSec} ops/sec`);
+
+  return results;
 }
 
 /**
@@ -706,6 +799,8 @@ function runAllBenchmarks() {
     combinationGeneration: benchmarkCombinationGeneration(),
     constructorVsFunction: benchmarkConstructorVsFunction(),
     worstCase: benchmarkWorstCase(),
+    strictMode: benchmarkStrictMode(),
+    keyCardsAndKickerCards: benchmarkKeyCardsAndKickerCards(),
     completeScenario: benchmark1326SevenCardHands(),
   };
 
@@ -736,6 +831,8 @@ module.exports = {
   benchmarkCombinationGeneration,
   benchmarkConstructorVsFunction,
   benchmarkWorstCase,
+  benchmarkStrictMode,
+  benchmarkKeyCardsAndKickerCards,
   benchmark1326SevenCardHands,
   generate1326SevenCardHands,
   generateDeck,

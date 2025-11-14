@@ -5,8 +5,10 @@ A comprehensive poker hand evaluation library for Node.js that evaluates poker h
 ## Features
 
 - **Comprehensive Hand Evaluation**: Evaluates all standard poker hand types (Royal Flush, Straight Flush, Four of a Kind, Full House, Flush, Straight, Three of a Kind, Two Pair, Pair, High Card)
+- **Strict Mode (Default)**: Only marks the strongest made hand and stronger draws, preventing weaker hands from being marked when stronger ones exist
 - **Detailed Categorization**: Categorizes pairs (Top, Middle, Bottom), two pairs, and three of a kind by position
 - **Draw Detection**: Identifies flush draws, backdoor flush draws, open-ended straight draws, and inside straight draws
+- **Key Cards and Kicker Cards**: Provides detailed card arrays showing which cards form each hand type and which are kickers
 - **Wheel Straight Support**: Handles Ace-low straights (A-2-3-4-5) correctly
 - **Multiple Card Support**: Accepts 5 or more cards and evaluates all possible 5-card combinations
 - **Extensive Documentation**: Full JSDoc comments for all methods
@@ -24,15 +26,15 @@ npm install poker-extval
 ```javascript
 const { evaluateHand } = require('poker-extval');
 
-// Evaluate a 5-card hand
+// Evaluate a 5-card hand (strict mode enabled by default)
 const result = evaluateHand(['As', 'Ks', 'Qs', 'Js', 'Ts']);
 console.log(result);
 // {
 //   "As, Ks, Qs, Js, Ts": {
 //     "isRoyalFlush": true,
 //     "isStraightFlush": false,
-//     "isFlush": true,
-//     "isStraight": true,
+//     "isFlush": false,  // Filtered out in strict mode (royal flush is stronger)
+//     "isStraight": false,  // Filtered out in strict mode (royal flush is stronger)
 //     ...
 //   }
 // }
@@ -43,13 +45,42 @@ console.log(result);
 ```javascript
 const { HandEvaluator } = require('poker-extval');
 
-// Create an evaluator instance
+// Create an evaluator instance (strict mode enabled by default)
 const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', 'Ts', '9s']);
 
 // Access evaluation results
 const evaluation = evaluator.evaluation;
 // Object with keys for each 5-card combination
+
+// Non-strict mode (all applicable hands marked)
+const nonStrictEvaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Kc', 'Qs'], false);
 ```
+
+### Strict Mode
+
+By default, the evaluator uses **strict mode** which only marks the strongest made hand and stronger draws as true. This prevents weaker hands from being marked when a stronger hand exists.
+
+**Example with strict mode (default):**
+```javascript
+const result = evaluateHand(['As', 'Ah', 'Kd', 'Kc', 'Qs']);
+// isTwoPair: true
+// isPair: false (filtered out because two pair is stronger)
+// isTopAndMiddlePair: true
+```
+
+**Example with non-strict mode:**
+```javascript
+const result = evaluateHand(['As', 'Ah', 'Kd', 'Kc', 'Qs'], false);
+// isTwoPair: true
+// isPair: false (evaluation logic prevents this, not strict mode)
+// isTopAndMiddlePair: true
+```
+
+**Strict Mode Rules:**
+- Only the strongest made hand is marked as true
+- Descriptive labels (isTopPair, etc.) are only true if they match the strongest hand
+- Made flush or stronger cannot have straight draws (flush > straight)
+- Draws can coexist when no made hand exists (flush draw + straight draw is valid)
 
 ### Evaluating Multiple Card Hands
 
@@ -100,17 +131,17 @@ The `evaluateHand()` function returns an object where:
 - `isPair` - Exactly one pair
 - `isHighCard` - No made hand
 
-#### Pair Categorization (only true if `isPair` is true)
+#### Pair Categorization (only true if `isPair` is true in strict mode)
 - `isTopPair` - Pair is the highest card
 - `isMiddlePair` - Pair is neither highest nor lowest
 - `isBottomPair` - Pair is the lowest card
 
-#### Two Pair Categorization (only true if `isTwoPair` is true)
+#### Two Pair Categorization (only true if `isTwoPair` is true in strict mode)
 - `isTopAndMiddlePair` - Both pairs are in top two ranks
 - `isTopAndBottomPair` - One pair is highest, other is lowest
 - `isMiddleAndBottomPair` - Both pairs are in middle and bottom ranks
 
-#### Three of a Kind Categorization (only true if `isThreeOfAKind` is true)
+#### Three of a Kind Categorization (only true if `isThreeOfAKind` is true in strict mode)
 - `isTopThreeOfAKind` - Three of a kind is the highest rank
 - `isMiddleThreeOfAKind` - Three of a kind is neither highest nor lowest
 - `isBottomThreeOfAKind` - Three of a kind is the lowest rank
@@ -135,6 +166,8 @@ The `evaluateHand()` function returns an object where:
 
 ### Example Response
 
+**Example 1: Royal Flush (strict mode - default)**
+
 ```javascript
 {
   "As, Ks, Qs, Js, Ts": {
@@ -143,10 +176,10 @@ The `evaluateHand()` function returns an object where:
     "isThreeOfAKind": false,
     "isTwoPair": false,
     "isPair": false,
-    "isFlush": true,
-    "isStraight": true,
+    "isFlush": false,  // Filtered out in strict mode (royal flush is stronger)
+    "isStraight": false,  // Filtered out in strict mode (royal flush is stronger)
     "isRoyalFlush": true,
-    "isStraightFlush": true,
+    "isStraightFlush": false,  // Filtered out in strict mode (royal flush is stronger)
     "isTopPair": false,
     "isMiddlePair": false,
     "isBottomPair": false,
@@ -167,8 +200,8 @@ The `evaluateHand()` function returns an object where:
       "isStraightFlush": [],
       "isFourOfAKind": [],
       "isFullHouse": [],
-      "isFlush": ["As", "Ks", "Qs", "Js", "Ts"],
-      "isStraight": ["As", "Ks", "Qs", "Js", "Ts"],
+      "isFlush": [],  // Empty in strict mode (royal flush is stronger)
+      "isStraight": [],  // Empty in strict mode (royal flush is stronger)
       "isThreeOfAKind": [],
       "isTwoPair": [],
       "isPair": [],
@@ -224,13 +257,13 @@ The `evaluateHand()` function returns an object where:
 }
 ```
 
-**Example 2: Pair with Flush Draw**
+**Example 2: Pair with Flush Draw (strict mode - default)**
 
 ```javascript
 {
   "As, Ah, Ks, Qs, Js": {
     "isPair": true,
-    "isFlushDraw": true,
+    "isFlushDraw": true,  // Draws can coexist with made hands in strict mode
     // ... other boolean properties ...
     "keyCards": {
       "isPair": ["As", "Ah"],
@@ -240,6 +273,29 @@ The `evaluateHand()` function returns an object where:
     "kickerCards": {
       "isPair": ["Ks", "Qs", "Js"],
       "isFlushDraw": ["Ah"],
+      // ... other hand types with empty arrays ...
+    }
+  }
+}
+```
+
+**Example 3: Two Pair (strict mode - default)**
+
+```javascript
+{
+  "As, Ah, Kd, Kc, Qs": {
+    "isTwoPair": true,
+    "isPair": false,  // Filtered out in strict mode (two pair is stronger)
+    "isTopAndMiddlePair": true,
+    // ... other boolean properties ...
+    "keyCards": {
+      "isTwoPair": ["As", "Ah", "Kd", "Kc"],
+      "isPair": [],  // Empty in strict mode
+      // ... other hand types with empty arrays ...
+    },
+    "kickerCards": {
+      "isTwoPair": ["Qs"],
+      "isPair": [],  // Empty in strict mode
       // ... other hand types with empty arrays ...
     }
   }
@@ -324,12 +380,13 @@ The test suite includes 572+ tests covering:
 
 ## API Reference
 
-### `evaluateHand(cards)`
+### `evaluateHand(cards, strict)`
 
 Main function to evaluate poker hands.
 
 **Parameters:**
 - `cards` (string[]): Array of 5 or more card strings
+- `strict` (boolean, optional): If `true`, only the strongest made hand and stronger draws are marked. If `false`, all applicable hand types are marked (default: `true`).
 
 **Returns:**
 - Object mapping sorted hand strings to evaluation objects
@@ -342,17 +399,19 @@ Main function to evaluate poker hands.
 #### Constructor
 
 ```javascript
-new HandEvaluator(cards)
+new HandEvaluator(cards, strict)
 ```
 
 Creates a new HandEvaluator instance.
 
 **Parameters:**
 - `cards` (string[]): Array of 5 or more card strings
+- `strict` (boolean, optional): If `true`, only the strongest made hand and stronger draws are marked. If `false`, all applicable hand types are marked (default: `true`).
 
 **Properties:**
 - `evaluation` - Object mapping sorted hand strings to evaluation objects (same format as `evaluateHand()` return value)
 - `cards` - Array of input cards
+- `strict` - Boolean indicating whether strict mode is enabled
 
 **Note**: All internal methods are private. Use the `evaluation` property to access evaluation results.
 

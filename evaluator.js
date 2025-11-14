@@ -26,14 +26,23 @@ class HandEvaluator {
    * @param {string[]} cards - Array of 5 or more card strings in format "Rs" where:
    *   - R is rank: A, K, Q, J, T, 9, 8, 7, 6, 5, 4, 3, 2
    *   - s is suit: s (spades), h (hearts), d (diamonds), c (clubs)
+   * @param {boolean} [strict=true] - If true, only the strongest made hand and stronger draws are marked as true.
+   *   If false, all applicable hand types are marked (current behavior).
    * @throws {Error} If cards is not an array, has fewer than 5 cards, contains invalid format,
    *   invalid rank, invalid suit, or duplicate cards
    * @example
    * const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', 'Ts']);
+   * @example
+   * // Strict mode (default) - only strongest hand marked
+   * const strictEvaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Kc', 'Qs'], true);
+   * @example
+   * // Non-strict mode - all applicable hands marked
+   * const nonStrictEvaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Kc', 'Qs'], false);
    */
-  constructor(cards) {
+  constructor(cards, strict = true) {
     this.#validateCards(cards);
     this.cards = cards;
+    this.strict = strict;
     this.evaluation = this.#evaluateAllCombinations();
   }
 
@@ -197,10 +206,73 @@ class HandEvaluator {
     evaluation.keyCards = this.#buildKeyCardsObject();
     evaluation.kickerCards = this.#buildKickerCardsObject(evaluation.keyCards);
     
+    // Apply strict mode filtering if enabled
+    if (this.strict) {
+      this.#applyStrictMode(evaluation);
+    }
+    
     // Restore original evaluation
     this.evaluation = originalEvaluation;
     
     return evaluation;
+  }
+
+  /**
+   * Applies strict mode filtering to evaluation results.
+   * Only the strongest made hand and stronger draws are kept as true.
+   * 
+   * @private
+   * @param {Object} evaluation - The evaluation object to filter
+   */
+  #applyStrictMode(evaluation) {
+    // Hand strength lookup (strongest = highest number)
+    const handStrength = {
+      isRoyalFlush: 10,
+      isStraightFlush: 9,
+      isFourOfAKind: 8,
+      isFullHouse: 7,
+      isFlush: 6,
+      isStraight: 5,
+      isThreeOfAKind: 4,
+      isTwoPair: 3,
+      isPair: 2,
+      isHighCard: 1
+    };
+    
+    // Find strongest made hand
+    let strongest = 0;
+    for (const [hand, strength] of Object.entries(handStrength)) {
+      if (evaluation[hand]) strongest = Math.max(strongest, strength);
+    }
+    
+    // Disable weaker made hands in single pass
+    for (const [hand, strength] of Object.entries(handStrength)) {
+      if (strength < strongest) evaluation[hand] = false;
+    }
+    
+    // Disable descriptive labels if not matching strongest
+    if (strongest !== 2) {
+      evaluation.isTopPair = false;
+      evaluation.isMiddlePair = false;
+      evaluation.isBottomPair = false;
+    }
+    if (strongest !== 3) {
+      evaluation.isTopAndMiddlePair = false;
+      evaluation.isTopAndBottomPair = false;
+      evaluation.isMiddleAndBottomPair = false;
+    }
+    if (strongest !== 4) {
+      evaluation.isTopThreeOfAKind = false;
+      evaluation.isMiddleThreeOfAKind = false;
+      evaluation.isBottomThreeOfAKind = false;
+    }
+    
+    // Filter draws: made flush or stronger cannot have straight draws
+    if (strongest >= 6) {
+      evaluation.isStraightDraw = false;
+      evaluation.isOpenEndedStraightDraw = false;
+      evaluation.isInsideStraightDraw = false;
+    }
   }
 
   /**
@@ -1423,10 +1495,12 @@ class HandEvaluator {
  * Generates all 5-card combinations and evaluates each one.
  * 
  * @param {string[]} cards - Array of 5 or more card strings in format "Rs" where R is rank (A, K, Q, J, T, 9, 8, 7, 6, 5, 4, 3, 2) and s is suit (s, h, d, c)
+ * @param {boolean} [strict=true] - If true, only the strongest made hand and stronger draws are marked as true.
+ *   If false, all applicable hand types are marked.
  * @returns {Object} Object mapping sorted hand strings (e.g., "As, Ks, Qs, Js, Ts") to evaluation objects with boolean fields for all hand types and draws
  */
-function evaluateHand(cards) {
-  const evaluator = new HandEvaluator(cards);
+function evaluateHand(cards, strict = true) {
+  const evaluator = new HandEvaluator(cards, strict);
   return evaluator.evaluation;
 }
 

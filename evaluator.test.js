@@ -25,7 +25,8 @@ describe('HandEvaluator - sort() functionality (tested via evaluation)', () => {
   });
 
   test('should detect straight when cards are unsorted (verifies internal sorting)', () => {
-    const result = evaluateHand(['2s', '3s', '4s', '5s', '6s']);
+    // Use a non-flush straight to test straight detection
+    const result = evaluateHand(['2s', '3h', '4d', '5c', '6s'], false);
     const evaluationKey = Object.keys(result)[0];
     const evaluation = result[evaluationKey];
     expect(evaluation.isStraight).toBe(true);
@@ -41,14 +42,16 @@ describe('HandEvaluator - sort() functionality (tested via evaluation)', () => {
 
 describe('HandEvaluator - getDistance() functionality (tested via straight detection)', () => {
   test('should detect straight with distance 4', () => {
-    const result = evaluateHand(['As', 'Ks', 'Qs', 'Js', 'Ts']);
+    // Use a non-royal flush straight to test straight detection
+    const result = evaluateHand(['9s', '8s', '7s', '6s', '5s'], false);
     const evaluationKey = Object.keys(result)[0];
     const evaluation = result[evaluationKey];
     expect(evaluation.isStraight).toBe(true);
   });
 
   test('should not detect straight when distance is 12', () => {
-    const result = evaluateHand(['As', '2s', '3s', '4s', '5s']);
+    // Use a non-flush wheel straight to test straight detection
+    const result = evaluateHand(['As', '2h', '3d', '4c', '5s'], false);
     const evaluationKey = Object.keys(result)[0];
     const evaluation = result[evaluationKey];
     // This is a wheel straight, so it should be detected
@@ -56,7 +59,8 @@ describe('HandEvaluator - getDistance() functionality (tested via straight detec
   });
 
   test('should detect consecutive cards as straight', () => {
-    const result = evaluateHand(['5s', '6s', '7s', '8s', '9s']);
+    // Use a non-flush straight to test straight detection
+    const result = evaluateHand(['5s', '6h', '7d', '8c', '9s'], false);
     const evaluationKey = Object.keys(result)[0];
     const evaluation = result[evaluationKey];
     expect(evaluation.isStraight).toBe(true);
@@ -65,7 +69,8 @@ describe('HandEvaluator - getDistance() functionality (tested via straight detec
 
 describe('HandEvaluator - countSuits() functionality (tested via flush detection)', () => {
   test('should detect flush when all suits match', () => {
-    const result = evaluateHand(['As', 'Ks', 'Qs', 'Js', 'Ts']);
+    // Use a non-royal flush to test flush detection
+    const result = evaluateHand(['As', 'Ks', 'Qs', 'Js', '9s'], false);
     const evaluationKey = Object.keys(result)[0];
     const evaluation = result[evaluationKey];
     expect(evaluation.isFlush).toBe(true);
@@ -1200,6 +1205,297 @@ describe('keyCards and kickerCards', () => {
         return rankB - rankA;
       });
       expect(evaluation.kickerCards.isPair).toEqual(sortedKickerCards);
+    });
+  });
+});
+
+// ==================== STRICT MODE TESTS ====================
+
+describe('Strict Mode', () => {
+  describe('Default behavior (strict: true)', () => {
+    test('should only mark strongest made hand - two pair filters out pair (default)', () => {
+      const result = evaluateHand(['As', 'Ah', 'Kd', 'Kc', 'Qs']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isTwoPair).toBe(true);
+      expect(evaluation.isPair).toBe(false);
+      expect(evaluation.isTopAndMiddlePair).toBe(true);
+    });
+
+    test('should only mark strongest made hand - two pair filters out pair (explicit)', () => {
+      const evaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Kc', 'Qs'], true);
+      const result = evaluator.evaluation;
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isTwoPair).toBe(true);
+      expect(evaluation.isPair).toBe(false);
+      expect(evaluation.isTopAndMiddlePair).toBe(true);
+    });
+
+    test('should filter descriptive labels for non-matching hands (default)', () => {
+      const result = evaluateHand(['As', 'Ah', 'Kd', 'Kc', 'Qs']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      // Two pair should not have pair labels
+      expect(evaluation.isTopPair).toBe(false);
+      expect(evaluation.isMiddlePair).toBe(false);
+      expect(evaluation.isBottomPair).toBe(false);
+    });
+
+    test('should filter descriptive labels for non-matching hands (explicit)', () => {
+      const evaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Kc', 'Qs'], true);
+      const result = evaluator.evaluation;
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      // Two pair should not have pair labels
+      expect(evaluation.isTopPair).toBe(false);
+      expect(evaluation.isMiddlePair).toBe(false);
+      expect(evaluation.isBottomPair).toBe(false);
+    });
+
+    test('should keep descriptive labels for matching strongest hand (default)', () => {
+      const result = evaluateHand(['As', 'Ah', 'Kd', 'Qc', 'Js']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isPair).toBe(true);
+      // At least one pair label should be true (depending on which pair it is)
+      expect(evaluation.isTopPair || evaluation.isMiddlePair || evaluation.isBottomPair).toBe(true);
+    });
+
+    test('should keep descriptive labels for matching strongest hand (explicit)', () => {
+      const evaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Qc', 'Js'], true);
+      const result = evaluator.evaluation;
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isPair).toBe(true);
+      // At least one pair label should be true (depending on which pair it is)
+      expect(evaluation.isTopPair || evaluation.isMiddlePair || evaluation.isBottomPair).toBe(true);
+    });
+
+    test('should filter straight draw when made flush exists (default)', () => {
+      const result = evaluateHand(['As', 'Ks', 'Qs', 'Js', '9s']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFlush).toBe(true);
+      expect(evaluation.isStraightDraw).toBe(false);
+      expect(evaluation.isOpenEndedStraightDraw).toBe(false);
+      expect(evaluation.isInsideStraightDraw).toBe(false);
+    });
+
+    test('should filter straight draw when made flush exists (explicit)', () => {
+      const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', '9s'], true);
+      const result = evaluator.evaluation;
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFlush).toBe(true);
+      expect(evaluation.isStraightDraw).toBe(false);
+      expect(evaluation.isOpenEndedStraightDraw).toBe(false);
+      expect(evaluation.isInsideStraightDraw).toBe(false);
+    });
+
+    test('should keep flush draw with two pair (default)', () => {
+      const result = evaluateHand(['As', 'Ah', 'Kd', 'Kc', 'Qs']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isTwoPair).toBe(true);
+      // This hand doesn't have a flush draw, so test a hand that does
+      const result2 = evaluateHand(['As', 'Ah', 'Ks', 'Qs', 'Js']);
+      const evaluationKey2 = Object.keys(result2)[0];
+      const evaluation2 = result2[evaluationKey2];
+      
+      // This is actually a pair with flush draw, not two pair
+      expect(evaluation2.isPair).toBe(true);
+      expect(evaluation2.isFlushDraw).toBe(true);
+    });
+
+    test('should keep flush draw with two pair (explicit)', () => {
+      const evaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Kc', 'Qs'], true);
+      const result = evaluator.evaluation;
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isTwoPair).toBe(true);
+      // This hand doesn't have a flush draw, so test a hand that does
+      const evaluator2 = new HandEvaluator(['As', 'Ah', 'Ks', 'Qs', 'Js'], true);
+      const result2 = evaluator2.evaluation;
+      const evaluationKey2 = Object.keys(result2)[0];
+      const evaluation2 = result2[evaluationKey2];
+      
+      // This is actually a pair with flush draw, not two pair
+      expect(evaluation2.isPair).toBe(true);
+      expect(evaluation2.isFlushDraw).toBe(true);
+    });
+
+    test('should keep draws with high card (default)', () => {
+      const result = evaluateHand(['As', 'Kh', 'Qd', 'Jc', '9s']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isHighCard).toBe(true);
+      expect(evaluation.isStraightDraw).toBe(true);
+    });
+
+    test('should keep draws with high card (explicit)', () => {
+      const evaluator = new HandEvaluator(['As', 'Kh', 'Qd', 'Jc', '9s'], true);
+      const result = evaluator.evaluation;
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isHighCard).toBe(true);
+      expect(evaluation.isStraightDraw).toBe(true);
+    });
+
+    test('should keep both flush draw and straight draw when no made hand (default)', () => {
+      const result = evaluateHand(['As', 'Ks', 'Qs', 'Js', '9h']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFlushDraw).toBe(true);
+      expect(evaluation.isStraightDraw).toBe(true);
+    });
+
+    test('should keep both flush draw and straight draw when no made hand (explicit)', () => {
+      const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', '9h'], true);
+      const result = evaluator.evaluation;
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFlushDraw).toBe(true);
+      expect(evaluation.isStraightDraw).toBe(true);
+    });
+  });
+
+  describe('Non-strict mode (strict: false)', () => {
+    test('should mark all applicable hands - two pair keeps descriptive labels', () => {
+      const evaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Kc', 'Qs'], false);
+      const result = evaluator.evaluation;
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isTwoPair).toBe(true);
+      // Note: isPair is false by evaluation logic (two pair is not a pair)
+      // But descriptive labels should be preserved
+      expect(evaluation.isTopAndMiddlePair).toBe(true);
+    });
+
+    test('should keep all descriptive labels when applicable', () => {
+      const evaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Kc', 'Qs'], false);
+      const result = evaluator.evaluation;
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      // In non-strict mode, pair labels might still be false if logic says so,
+      // but two pair labels should be true
+      expect(evaluation.isTopAndMiddlePair).toBe(true);
+    });
+  });
+
+  describe('Edge cases', () => {
+    test('should handle royal flush correctly (default)', () => {
+      const result = evaluateHand(['As', 'Ks', 'Qs', 'Js', 'Ts']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isRoyalFlush).toBe(true);
+      expect(evaluation.isStraightFlush).toBe(false);
+      expect(evaluation.isFlush).toBe(false);
+      expect(evaluation.isStraight).toBe(false);
+    });
+
+    test('should handle royal flush correctly (explicit)', () => {
+      const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', 'Ts'], true);
+      const result = evaluator.evaluation;
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isRoyalFlush).toBe(true);
+      expect(evaluation.isStraightFlush).toBe(false);
+      expect(evaluation.isFlush).toBe(false);
+      expect(evaluation.isStraight).toBe(false);
+    });
+
+    test('should handle four of a kind correctly (default)', () => {
+      const result = evaluateHand(['As', 'Ah', 'Ad', 'Ac', 'Ks']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFourOfAKind).toBe(true);
+      expect(evaluation.isThreeOfAKind).toBe(false);
+      expect(evaluation.isPair).toBe(false);
+    });
+
+    test('should handle four of a kind correctly (explicit)', () => {
+      const evaluator = new HandEvaluator(['As', 'Ah', 'Ad', 'Ac', 'Ks'], true);
+      const result = evaluator.evaluation;
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFourOfAKind).toBe(true);
+      expect(evaluation.isThreeOfAKind).toBe(false);
+      expect(evaluation.isPair).toBe(false);
+    });
+
+    test('should handle full house correctly (default)', () => {
+      const result = evaluateHand(['As', 'Ah', 'Ad', 'Kc', 'Kh']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFullHouse).toBe(true);
+      expect(evaluation.isThreeOfAKind).toBe(false);
+      expect(evaluation.isTwoPair).toBe(false);
+      expect(evaluation.isPair).toBe(false);
+    });
+
+    test('should handle full house correctly (explicit)', () => {
+      const evaluator = new HandEvaluator(['As', 'Ah', 'Ad', 'Kc', 'Kh'], true);
+      const result = evaluator.evaluation;
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFullHouse).toBe(true);
+      expect(evaluation.isThreeOfAKind).toBe(false);
+      expect(evaluation.isTwoPair).toBe(false);
+      expect(evaluation.isPair).toBe(false);
+    });
+  });
+
+  describe('evaluateHand function with strict parameter', () => {
+    test('should default to strict=true', () => {
+      const result = evaluateHand(['As', 'Ah', 'Kd', 'Kc', 'Qs']);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isTwoPair).toBe(true);
+      expect(evaluation.isPair).toBe(false);
+    });
+
+    test('should work with strict=true via evaluateHand (explicit)', () => {
+      const result = evaluateHand(['As', 'Ah', 'Kd', 'Kc', 'Qs'], true);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isTwoPair).toBe(true);
+      expect(evaluation.isPair).toBe(false);
+    });
+
+    test('should work with strict=false via evaluateHand', () => {
+      const result = evaluateHand(['As', 'Ah', 'Kd', 'Kc', 'Qs'], false);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isTwoPair).toBe(true);
+      // Note: isPair is false by evaluation logic (two pair is not a pair)
+      // This test verifies non-strict mode behavior
+      expect(evaluation.isTopAndMiddlePair).toBe(true);
     });
   });
 });
