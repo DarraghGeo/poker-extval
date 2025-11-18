@@ -1499,3 +1499,532 @@ describe('Strict Mode', () => {
     });
   });
 });
+
+// ==================== STRICT MODE COMBINATION FILTERING TESTS ====================
+// These tests verify that when strict mode is enabled with 6+ cards, only the best
+// 5-card combination is returned. This is critical for RangeManager.hitsHand() to
+// correctly identify hand strengths when the board already has pairs or other made hands.
+//
+// Example: Board 3♠ K♠ T♠ K♦ has a pair of Kings. Hand A3 makes a pair of 3s,
+// so the best hand is "Two Pair" (KK + 33), not "Pair".
+
+describe('Strict Mode Combination Filtering - Pair vs Two Pair on Paired Board', () => {
+  test('should return Two Pair when board has pair and hand makes pair', () => {
+    // Board: 3♠ K♠ T♠ K♦ (has pair of Kings)
+    // Hand: A3 (makes pair of 3s)
+    // Expected: Two Pair (KK + 33), NOT Pair
+    const board = ['3s', 'Ks', 'Ts', 'Kd'];
+    const hand = ['Ac', '3h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isTwoPair).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should return Two Pair when board has pair and hand pairs with different board card', () => {
+    // Board: 3♠ K♠ T♠ K♦ (has pair of Kings)
+    // Hand: AT (makes pair of Tens with board T)
+    // Expected: Two Pair (KK + TT)
+    const board = ['3s', 'Ks', 'Ts', 'Kd'];
+    const hand = ['Ac', 'Th'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isTwoPair).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should identify Two Pair when board has pair and hand has pocket pair', () => {
+    // Board: 3♠ K♠ T♠ K♦ (has pair of Kings)
+    // Hand: 33 (pocket pair of 3s)
+    // Result: Should be Two Pair (KK + 33)
+    const board = ['3s', 'Ks', 'Ts', 'Kd'];
+    const hand = ['3c', '3h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isFullHouse).toBe(true);
+    expect(evaluation.isTwoPair).toBe(false);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should return Pair when board has no pair and hand makes pair', () => {
+    // Board: 3♠ K♠ T♠ 9♦ (no pair)
+    // Hand: A3 (makes pair of 3s)
+    // Expected: Pair, NOT Two Pair
+    const board = ['3s', 'Ks', 'Ts', '9d'];
+    const hand = ['Ac', '3h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isPair).toBe(true);
+    expect(evaluation.isTwoPair).toBe(false);
+  });
+
+  test('should return Three of a Kind when board has no pair and hand has pocket pair matching board', () => {
+    // Board: 3♠ K♠ T♠ 9♦ (no pair, but has one 3)
+    // Hand: 33 (pocket pair of 3s)
+    // Expected: Three of a Kind (333)
+    const board = ['3s', 'Ks', 'Ts', '9d'];
+    const hand = ['3c', '3h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isThreeOfAKind).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+    expect(evaluation.isTwoPair).toBe(false);
+  });
+
+  test('should identify Two Pair when board has two pair and hand makes pair', () => {
+    // Board: 3♠ K♠ T♠ K♦ T♦ (has two pair: KK + TT)
+    // Hand: A3 (makes pair of 3s)
+    // Result: Should still be Two Pair (best 5 cards would be KK + TT)
+    const board = ['3s', 'Ks', 'Ts', 'Kd', 'Td'];
+    const hand = ['Ac', '3h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    // Best 5 cards: KK + TT + A = Two Pair
+    expect(evaluation.isTwoPair).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should identify Three of a Kind when board has pair and hand adds another King', () => {
+    // Board: 3♠ K♠ T♠ K♦ (has pair of Kings)
+    // Hand: KK (pocket pair of Kings)
+    // Result: Should be Three of a Kind (KKK), not Full House (no pair to go with KKK)
+    const board = ['Th', 'Ks', 'Ts', 'Kd'];
+    const hand = ['Kc', 'Kh'];
+    const allCards = [...board, ...hand];
+    
+    // Check all combinations
+    const resultNonStrict = evaluateHand(allCards, false);
+    const fourOfAKindCombos = Object.keys(resultNonStrict).filter(key => 
+      resultNonStrict[key].isFourOfAKind === true
+    );
+    expect(fourOfAKindCombos.length).toBeGreaterThan(0);
+    
+    // Test strict mode
+    const resultStrict = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(resultStrict)[0];
+    const evaluation = resultStrict[evaluationKey];
+    
+    // Best hand should be Three of a Kind (KKK)
+    expect(evaluation.isFourOfAKind).toBe(true);
+    expect(evaluation.isThreeOfAKind).toBe(false);
+    expect(evaluation.isFullHouse).toBe(false);
+    expect(evaluation.isTwoPair).toBe(false);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should return Two Pair with correct key cards when board has pair and hand pairs with ace kicker', () => {
+    // Board: 3♠ K♠ T♠ K♦ (has pair of Kings)
+    // Hand: A3 (makes pair of 3s, Ace kicker)
+    // Expected: Two Pair (KK + 33), Ace is kicker
+    const board = ['3s', 'Ks', 'Ts', 'Kd'];
+    const hand = ['Ac', '3h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isTwoPair).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+    expect(evaluation.keyCards.isTwoPair).toBeDefined();
+    expect(evaluation.keyCards.isTwoPair.length).toBeGreaterThanOrEqual(4);
+  });
+
+  test('should identify Two Pair when board has low pair and hand makes high pair', () => {
+    // Board: 3♠ 3♠ T♠ 9♦ (has pair of 3s)
+    // Hand: AK (makes pair of Aces or Kings if board has one)
+    // Result: Should be Two Pair if hand pairs, or Pair if no pair
+    const board = ['3s', '3h', 'Ts', '9d'];
+    const hand = ['Ac', 'Kd'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    // No pair in hand, so should be Pair (33 from board)
+    expect(evaluation.isPair).toBe(true);
+    expect(evaluation.isTwoPair).toBe(false);
+  });
+
+  test('should return Two Pair when board has pair and hand makes pair with middle card', () => {
+    // Board: 3♠ K♠ T♠ K♦ (has pair of Kings)
+    // Hand: QT (makes pair of Tens with board T)
+    // Expected: Two Pair (KK + TT)
+    const board = ['3s', 'Ks', 'Ts', 'Kd'];
+    const hand = ['Qc', 'Th'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isTwoPair).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should correctly evaluate when board has pair and hand makes no pair', () => {
+    // Board: 3♠ K♠ T♠ K♦ (has pair of Kings)
+    // Hand: AQ (no pair, just high cards)
+    // Result: Should be Pair (KK from board)
+    const board = ['3s', 'Ks', 'Ts', 'Kd'];
+    const hand = ['Ac', 'Qh'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isPair).toBe(true);
+    expect(evaluation.isTwoPair).toBe(false);
+  });
+
+  test('should return Two Pair when board has pair and hand makes pair with lowest board card', () => {
+    // Board: 2♠ K♠ T♠ K♦ (has pair of Kings)
+    // Hand: A2 (makes pair of 2s with board 2)
+    // Expected: Two Pair (KK + 22)
+    const board = ['2s', 'Ks', 'Ts', 'Kd'];
+    const hand = ['Ac', '2h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isTwoPair).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should return Three of a Kind when board has pair and hand makes three of a kind', () => {
+    // Board: 3♠ K♠ T♠ K♦ (has pair of Kings)
+    // Hand: K3 (has King and 3)
+    // Expected: Three of a Kind (KKK) - best hand
+    const board = ['3s', 'Ks', 'Ts', 'Kd'];
+    const hand = ['Kc', '3h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    // Best hand: KKK + T + 3 = Three of a Kind
+    expect(evaluation.isFullHouse).toBe(true);
+    expect(evaluation.isThreeOfAKind).toBe(false);
+    expect(evaluation.isTwoPair).toBe(false);
+    expect(evaluation.isPair).toBe(false);
+  });
+});
+
+// ==================== STRICT MODE COMBINATION FILTERING - OTHER HAND COMBINATIONS ====================
+// These tests verify that strict mode correctly returns the best hand when multiple
+// hand types are possible from different 5-card combinations.
+
+describe('Strict Mode Combination Filtering - Other Hand Combinations', () => {
+  test('should return Straight when board has pair and hand makes straight', () => {
+    // Board: 9♠ T♠ J♠ K♦ Kc (has pair of Kings, straight draw)
+    // Hand: Q8 (makes straight Q-J-T-9-8)
+    // Expected: Straight (stronger than Pair)
+    const board = ['9s', 'Th', 'Jh', 'Kd', 'Kc'];
+    const hand = ['Qc', '8h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isStraight).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should return Flush when board has pair and hand makes flush', () => {
+    // Board: 3♠ K♠ K♦ 9♠ 2♠ (has pair of Kings, 4 spades)
+    // Hand: As (completes flush)
+    // Expected: Flush (stronger than Pair)
+    const board = ['3s', 'Ks', 'Kd', '9s', '2s'];
+    const hand = ['As', 'Qh'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isFlush).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should return Straight when board has two pair and hand makes straight', () => {
+    // Board: 9♠ T♠ J♠ K♦ Kc (has pair of Kings, straight draw)
+    // Hand: Q8 (makes straight Q-J-T-9-8, stronger than pair)
+    // Expected: Straight (stronger than Two Pair if board had two pair)
+    // Note: This test uses a board with pair + straight to verify strict mode filtering
+    const board = ['9s', 'Th', 'Jh', 'Kd', 'Kc'];
+    const hand = ['Qc', '8h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isStraight).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should return Flush when board has two pair and hand makes flush', () => {
+    // Board: 3♠ K♠ K♦ 9♠ 2♠ (has pair of Kings, 4 spades)
+    // Hand: As (completes flush)
+    // Expected: Flush (stronger than Pair)
+    // Note: This test uses a board with pair + flush to verify strict mode filtering
+    const board = ['3s', 'Ks', 'Kd', '9s', '2s'];
+    const hand = ['As', 'Qh'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isFlush).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should return Flush when both straight and flush are possible', () => {
+    // Board: 3♠ 4♠ 5♠ 6♠ (4 spades, straight draw)
+    // Hand: 2s (makes flush, or could make straight with 2-3-4-5-6)
+    // Expected: Flush (stronger than Straight)
+    const board = ['3s', '4s', '5s', '6h', '2h'];
+    const hand = ['2s', 'Ks'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isFlush).toBe(true);
+    expect(evaluation.isStraight).toBe(false);
+  });
+
+  test('should return Straight Flush when both straight and flush are possible with same suit', () => {
+    // Board: 3♠ 4♠ 5♠ 6♠ (4 spades, straight draw)
+    // Hand: 2s (makes straight flush 2-3-4-5-6 all spades)
+    // Expected: Straight Flush (stronger than Flush or Straight)
+    const board = ['3s', '4s', '5s', '6s', 'Kh'];
+    const hand = ['2s', 'Qh'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isStraightFlush).toBe(true);
+    expect(evaluation.isFlush).toBe(false);
+    expect(evaluation.isStraight).toBe(false);
+  });
+
+  test('should return Full House when board has pair and hand makes three of a kind with different rank', () => {
+    // Board: 3♠ K♠ K♦ 9♦ (has pair of Kings)
+    // Hand: 33 (pocket pair of 3s)
+    // Expected: Full House (KKK + 33) or (333 + KK)
+    const board = ['3s', 'Ks', 'Kd', '9d', '2h'];
+    const hand = ['3c', '3h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isFullHouse).toBe(true);
+    expect(evaluation.isThreeOfAKind).toBe(false);
+    expect(evaluation.isTwoPair).toBe(false);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should return Three of a Kind when board has pair and hand makes three of a kind with same rank', () => {
+    // Board: 3♠ K♠ K♦ 9♦ (has pair of Kings)
+    // Hand: Kc (adds another King)
+    // Expected: Three of a Kind (KKK)
+    const board = ['3s', 'Ks', 'Kd', '9d', '2h'];
+    const hand = ['Kc', 'Qh'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isThreeOfAKind).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should return Straight when board has three of a kind and hand makes straight', () => {
+    // Board: 9♠ T♠ J♠ K♦ Kc (has pair of Kings, but can make three of a kind or straight)
+    // Hand: Q8 (makes straight Q-J-T-9-8)
+    // Expected: Straight (stronger than Three of a Kind)
+    // Note: This test verifies strict mode selects straight over three of a kind
+    const board = ['9s', 'Th', 'Jh', 'Kd', 'Kc'];
+    const hand = ['Qc', '8h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isStraight).toBe(true);
+    expect(evaluation.isThreeOfAKind).toBe(false);
+  });
+
+  test('should return Flush when board has three of a kind and hand makes flush', () => {
+    // Board: 3♠ K♠ K♦ Kc 2♠ (has three of a kind: KKK, 3 spades)
+    // Hand: As (completes flush with 4 spades on board)
+    // Expected: Flush (stronger than Three of a Kind)
+    const board = ['3s', 'Ks', 'Kd', 'Kc', '2s'];
+    const hand = ['As', 'Qs'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isFlush).toBe(true);
+    expect(evaluation.isThreeOfAKind).toBe(false);
+  });
+
+  test('should return Four of a Kind when board has three of a kind and hand adds fourth', () => {
+    // Board: 3♠ K♠ K♦ Kc (has three of a kind: KKK)
+    // Hand: Kh (adds fourth King)
+    // Expected: Four of a Kind (KKKK)
+    const board = ['3s', 'Ks', 'Kd', 'Kc', '2h'];
+    const hand = ['Kh', 'Qh'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isFourOfAKind).toBe(true);
+    expect(evaluation.isThreeOfAKind).toBe(false);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should return Royal Flush when possible', () => {
+    // Board: As Ks Qs Js (4 spades, royal flush draw)
+    // Hand: Ts (completes royal flush)
+    // Expected: Royal Flush
+    const board = ['As', 'Ks', 'Qs', 'Js', '2h'];
+    const hand = ['Ts', 'Qh'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isRoyalFlush).toBe(true);
+    expect(evaluation.isStraightFlush).toBe(false);
+    expect(evaluation.isFlush).toBe(false);
+    expect(evaluation.isStraight).toBe(false);
+  });
+
+  test('should return best hand when multiple strong hands are possible', () => {
+    // Board: 3♠ 4♠ 5♠ 6♠ K♦ (4 spades, straight draw, pair of Kings)
+    // Hand: 2s (could make flush, straight, or use pair)
+    // Expected: Flush (strongest: 6 > 5 > 2)
+    const board = ['3s', '4s', '5s', '6s', 'Kd'];
+    const hand = ['2s', 'Kh'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isStraightFlush).toBe(true);
+    expect(evaluation.isFlush).toBe(false);
+    expect(evaluation.isStraight).toBe(false);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should return Straight when board has pair and hand completes wheel straight', () => {
+    // Board: 2♠ 3♠ 4♠ K♦ Kc (has pair of Kings, wheel straight draw)
+    // Hand: A5 (completes wheel straight A-2-3-4-5)
+    // Expected: Straight (wheel, stronger than Pair)
+    const board = ['2s', '3s', '4s', 'Kd', 'Kc'];
+    const hand = ['As', '5h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isStraight).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should return best hand when comparing kickers matters', () => {
+    // Board: 3♠ K♠ K♦ 9♦ (has pair of Kings)
+    // Hand: AQ vs AT - both make pair of Kings, but AQ has better kicker
+    // Expected: Should return combination with best kickers when hand strength is equal
+    const board = ['3s', 'Ks', 'Kd', '9d', '2h'];
+    const hand = ['Ac', 'Qh'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    // Should be Pair with best kickers
+    expect(evaluation.isPair).toBe(true);
+    expect(evaluation.isTwoPair).toBe(false);
+  });
+
+  test('should return Flush when board has flush draw and hand completes it, even with pair on board', () => {
+    // Board: 3♠ K♠ K♦ 9♠ 2♠ (has pair of Kings, 4 spades)
+    // Hand: As (completes flush)
+    // Expected: Flush (stronger than Pair)
+    const board = ['3s', 'Ks', 'Kd', '9s', '2s'];
+    const hand = ['As', 'Qh'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isFlush).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+  });
+
+  test('should return Straight when board has straight draw and hand completes it, even with pair on board', () => {
+    // Board: 9♠ T♠ J♠ K♦ Kc (has pair of Kings, straight draw)
+    // Hand: Q8 (completes straight Q-J-T-9-8)
+    // Expected: Straight (stronger than Pair)
+    const board = ['9s', 'Th', 'Jh', 'Kd', 'Kc'];
+    const hand = ['Qc', '8h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isStraight).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+  });
+});

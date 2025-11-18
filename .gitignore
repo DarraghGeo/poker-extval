@@ -173,6 +173,9 @@ site/
 .yarn/build-state.yml
 .yarn/install-state.gz
 
+# ==================== Plan Files ====================
+*.plan.md
+
 # ==================== Optional npm cache directory ====================
 .npm
 

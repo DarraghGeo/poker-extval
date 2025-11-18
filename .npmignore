@@ -39,3 +39,6 @@ coverage/
 *.temp
 *.bak
 
+# Plan files
+*.plan.md
+

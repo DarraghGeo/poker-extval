@@ -276,6 +276,121 @@ class HandEvaluator {
   }
 
   /**
+   * Gets the hand strength value for an evaluation.
+   * 
+   * @private
+   * @param {Object} evaluation - The evaluation object
+   * @returns {number} Hand strength (10 = Royal Flush, 1 = High Card, 0 = no made hand)
+   */
+  #getHandStrength(evaluation) {
+    const handStrength = {
+      isRoyalFlush: 10, isStraightFlush: 9, isFourOfAKind: 8,
+      isFullHouse: 7, isFlush: 6, isStraight: 5, isThreeOfAKind: 4,
+      isTwoPair: 3, isPair: 2, isHighCard: 1
+    };
+    for (const [hand, strength] of Object.entries(handStrength)) {
+      if (evaluation[hand]) return strength;
+    }
+    return 0;
+  }
+
+  /**
+   * Gets sorted key card ranks for an evaluation.
+   * 
+   * @private
+   * @param {Object} evaluation - The evaluation object
+   * @returns {number[]} Array of rank values sorted descending
+   */
+  #getKeyCardRanks(evaluation) {
+    const handStrength = {
+      isRoyalFlush: 10, isStraightFlush: 9, isFourOfAKind: 8,
+      isFullHouse: 7, isFlush: 6, isStraight: 5, isThreeOfAKind: 4,
+      isTwoPair: 3, isPair: 2, isHighCard: 1
+    };
+    for (const [hand] of Object.entries(handStrength)) {
+      if (evaluation[hand]) {
+        const keyCards = evaluation.keyCards[hand] || [];
+        return keyCards.map(c => this.#getRankValue(c)).sort((a, b) => b - a);
+      }
+    }
+    return [];
+  }
+
+  /**
+   * Gets sorted kicker ranks for an evaluation.
+   * 
+   * @private
+   * @param {Object} evaluation - The evaluation object
+   * @returns {number[]} Array of rank values sorted descending
+   */
+  #getKickerRanks(evaluation) {
+    const handStrength = {
+      isRoyalFlush: 10, isStraightFlush: 9, isFourOfAKind: 8,
+      isFullHouse: 7, isFlush: 6, isStraight: 5, isThreeOfAKind: 4,
+      isTwoPair: 3, isPair: 2, isHighCard: 1
+    };
+    for (const [hand] of Object.entries(handStrength)) {
+      if (evaluation[hand]) {
+        const kickers = evaluation.kickerCards[hand] || [];
+        return kickers.map(c => this.#getRankValue(c)).sort((a, b) => b - a);
+      }
+    }
+    return [];
+  }
+
+  /**
+   * Compares two evaluations to determine which is better.
+   * 
+   * @private
+   * @param {Object} eval1 - First evaluation object
+   * @param {Object} eval2 - Second evaluation object
+   * @returns {number} Positive if eval2 is better, negative if eval1 is better, 0 if equal
+   */
+  #compareEvaluations(eval1, eval2) {
+    const strength1 = this.#getHandStrength(eval1);
+    const strength2 = this.#getHandStrength(eval2);
+    if (strength1 !== strength2) return strength2 - strength1;
+    
+    const keyRanks1 = this.#getKeyCardRanks(eval1);
+    const keyRanks2 = this.#getKeyCardRanks(eval2);
+    for (let i = 0; i < Math.max(keyRanks1.length, keyRanks2.length); i++) {
+      const rank1 = keyRanks1[i] || 0;
+      const rank2 = keyRanks2[i] || 0;
+      if (rank1 !== rank2) return rank2 - rank1;
+    }
+    
+    const kickerRanks1 = this.#getKickerRanks(eval1);
+    const kickerRanks2 = this.#getKickerRanks(eval2);
+    for (let i = 0; i < Math.max(kickerRanks1.length, kickerRanks2.length); i++) {
+      const rank1 = kickerRanks1[i] || 0;
+      const rank2 = kickerRanks2[i] || 0;
+      if (rank1 !== rank2) return rank2 - rank1;
+    }
+    return 0;
+  }
+
+  /**
+   * Finds the best combination from a result object.
+   * 
+   * @private
+   * @param {Object} result - Object mapping hand keys to evaluation objects
+   * @returns {Object} Object with only the best combination
+   */
+  #findBestCombination(result) {
+    let bestKey = null;
+    let bestEval = null;
+    for (const [key, evaluation] of Object.entries(result)) {
+      const strength = this.#getHandStrength(evaluation);
+      const bestStrength = bestEval ? this.#getHandStrength(bestEval) : 0;
+      if (!bestEval || strength > bestStrength || (strength === bestStrength && this.#compareEvaluations(evaluation, bestEval) > 0)) {
+        bestKey = key;
+        bestEval = evaluation;
+      }
+    }
+    return bestKey ? { [bestKey]: bestEval } : result;
+  }
+
+  /**
    * Evaluates all possible 5-card combinations from the input cards.
    * For exactly 5 cards, evaluates directly. For more cards, generates all combinations
    * and evaluates each one, returning an object mapping formatted hand strings to evaluation objects.
@@ -290,26 +405,22 @@ class HandEvaluator {
    * // With 7 cards: returns object with 21 key-value pairs (C(7,5) = 21)
    */
   #evaluateAllCombinations() {
-    // If exactly 5 cards, evaluate directly and wrap in the new format
     if (this.cards.length === 5) {
       const key = this.#formatHandKey(this.cards);
       const evaluation = this.#evaluateSingleHand();
       return { [key]: evaluation };
     }
     
-    // For more than 5 cards, generate all combinations
     const combinations = this.#generateCombinations(this.cards, 5);
     const result = {};
     for (const combination of combinations) {
       const key = this.#formatHandKey(combination);
-      // Create a temporary evaluator with the 5-card combination
-      // This will evaluate directly since it's exactly 5 cards
-      const tempEvaluator = new HandEvaluator(combination);
-      // Extract the evaluation object from the single key-value pair
+      const tempEvaluator = new HandEvaluator(combination, this.strict);
       const evaluationKey = Object.keys(tempEvaluator.evaluation)[0];
       result[key] = tempEvaluator.evaluation[evaluationKey];
     }
-    return result;
+    
+    return this.strict ? this.#findBestCombination(result) : result;
   }
 
   /**
