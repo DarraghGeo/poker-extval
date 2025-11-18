@@ -39,10 +39,11 @@ class HandEvaluator {
    * // Non-strict mode - all applicable hands marked
    * const nonStrictEvaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Kc', 'Qs'], false);
    */
-  constructor(cards, strict = true) {
+  constructor(cards, strict = true, originalCards = null) {
     this.#validateCards(cards);
     this.cards = cards;
     this.strict = strict;
+    this.originalCards = originalCards || (cards.length > 5 ? cards : null);
     this.evaluation = this.#evaluateAllCombinations();
   }
 
@@ -198,6 +199,8 @@ class HandEvaluator {
     this.#isOpenEndedStraightDraw();
     this.#isInsideStraightDraw();
     this.#isStraightDraw();
+    this.#isComboDraw();
+    this.#isUnderPair();
     this.#isHighCard();
     
     // Add keyCards and kickerCards before restoring original evaluation
@@ -415,7 +418,7 @@ class HandEvaluator {
     const result = {};
     for (const combination of combinations) {
       const key = this.#formatHandKey(combination);
-      const tempEvaluator = new HandEvaluator(combination, this.strict);
+      const tempEvaluator = new HandEvaluator(combination, this.strict, this.originalCards);
       const evaluationKey = Object.keys(tempEvaluator.evaluation)[0];
       result[key] = tempEvaluator.evaluation[evaluationKey];
     }
@@ -1431,6 +1434,33 @@ class HandEvaluator {
   }
 
   /**
+   * Gets key cards for combo draw (flush draw + straight draw).
+   * Returns the union of flush draw and straight draw cards.
+   * 
+   * @private
+   * @returns {string[]} Array of cards forming the combo draw, empty array otherwise
+   */
+  #getKeyCardsForComboDraw() {
+    if (!this.evaluation.isComboDraw) return [];
+    const flushCards = this.#getKeyCardsForFlushDraw();
+    const straightCards = this.#getKeyCardsForStraightDraw();
+    const allCards = [...flushCards, ...straightCards];
+    const uniqueCards = [...new Set(allCards)];
+    return uniqueCards.sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+  }
+
+  /**
+   * Gets key cards for under pair (the two cards forming the pair).
+   * 
+   * @private
+   * @returns {string[]} Array of 2 cards if under pair, empty array otherwise
+   */
+  #getKeyCardsForUnderPair() {
+    if (!this.evaluation.isUnderPair) return [];
+    return this.#getKeyCardsForPair();
+  }
+
+  /**
    * Gets key cards for wheel straight (5 cards forming wheel).
    * 
    * @private
@@ -1507,6 +1537,8 @@ class HandEvaluator {
       isStraightWheel: this.#getKeyCardsForStraightWheel(),
       isOpenEndedStraightDrawWheel: this.#getKeyCardsForOpenEndedStraightDrawWheel(),
       isInsideStraightDrawWheel: this.#getKeyCardsForInsideStraightDrawWheel(),
+      isComboDraw: this.#getKeyCardsForComboDraw(),
+      isUnderPair: this.#getKeyCardsForUnderPair(),
       isHighCard: this.#getKeyCardsForHighCard()
     };
   }
@@ -1578,6 +1610,62 @@ class HandEvaluator {
   }
 
   // ==================== HIGH CARD ====================
+  
+  /**
+   * Determines if the hand has both a flush draw and a straight draw simultaneously.
+   * Requires both isFlushDraw (not backdoor) and isStraightDraw to be true.
+   * 
+   * @returns {boolean} True if the hand is a combo draw, false otherwise
+   * @example
+   * const evaluator = new HandEvaluator(['9s', '8s', '7s', '6s', 'Kh']);
+   * evaluator.isComboDraw(); // Returns true (flush draw + straight draw)
+   */
+  #isComboDraw() {
+    if (this.evaluation.isComboDraw !== undefined) return this.evaluation.isComboDraw;
+    if (this.evaluation.isFlushDraw === undefined) this.#isFlushDraw();
+    if (this.evaluation.isStraightDraw === undefined) this.#isStraightDraw();
+    if (this.evaluation.isBackdoorFlushDraw === undefined) this.#isBackdoorFlushDraw();
+    return this.evaluation.isComboDraw = this.evaluation.isFlushDraw && 
+           this.evaluation.isStraightDraw && 
+           !this.evaluation.isBackdoorFlushDraw;
+  }
+
+  /**
+   * Determines if the hand contains an under pair (pocket pair smaller than all board cards).
+   * Only applicable when evaluating 6+ cards where the pair rank is smaller than all other cards.
+   * 
+   * @returns {boolean} True if the hand is an under pair, false otherwise
+   * @example
+   * // Board: K♠ Q♠ J♠ 8♠, Hand: 77
+   * const evaluator = new HandEvaluator(['Ks', 'Qh', 'Jd', '8c', '7c', '7h']);
+   * evaluator.isUnderPair(); // Returns true (pair of 7s is smaller than all board cards)
+   */
+  #isUnderPair() {
+    if (this.evaluation.isUnderPair !== undefined) return this.evaluation.isUnderPair;
+    if (this.evaluation.isPair === undefined) this.#isPair();
+    if (!this.evaluation.isPair || !this.originalCards || this.originalCards.length < 6) {
+      return this.evaluation.isUnderPair = false;
+    }
+    const pairRank = this.#getPairRank();
+    if (!pairRank) return this.evaluation.isUnderPair = false;
+    const otherCards = this.originalCards.filter(c => c.slice(0, -1) !== pairRank);
+    const minOtherRank = Math.min(...otherCards.map(c => this.#getRankValue(c)));
+    return this.evaluation.isUnderPair = this.#getRankValue(pairRank + 's') < minOtherRank;
+  }
+
+  /**
+   * Gets the rank of the pair in the current hand.
+   * 
+   * @private
+   * @returns {string|null} The rank of the pair, or null if no pair exists
+   */
+  #getPairRank() {
+    const rankCounts = this.#getRankCounts();
+    for (const [rank, count] of Object.entries(rankCounts)) {
+      if (count === 2) return rank;
+    }
+    return null;
+  }
   
   /**
    * Determines if the hand is high card only (no pairs, two pair, three of a kind, full house,

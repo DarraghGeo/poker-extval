@@ -1152,6 +1152,165 @@ describe('keyCards and kickerCards', () => {
     });
   });
 
+  describe('Combo Draw', () => {
+    test('should identify combo draw with flush draw and open-ended straight draw', () => {
+      // Hand: 9♠ 8♠ 7♠ 6♠ (4 spades = flush draw, 4 consecutive = open-ended straight draw)
+      // Expected: isComboDraw should be true (when implemented)
+      // Both draws should exist simultaneously, even in strict mode
+      const result = evaluateHand(['9s', '8s', '7s', '6s', 'Kh'], true);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFlushDraw).toBe(true);
+      expect(evaluation.isBackdoorFlushDraw).toBe(false);
+      expect(evaluation.isOpenEndedStraightDraw).toBe(true);
+      expect(evaluation.isStraightDraw).toBe(true);
+      // Both draws should be true simultaneously
+      expect(evaluation.isFlushDraw && evaluation.isStraightDraw).toBe(true);
+      expect(evaluation.isComboDraw).toBe(true);
+    });
+
+    test('should identify combo draw with flush draw and inside straight draw', () => {
+      // Hand: 9♠ 8♠ 7♠ 5♠ (4 spades = flush draw, 9-8-7-5 = inside straight draw)
+      // Expected: isComboDraw should be true
+      const result = evaluateHand(['9s', '8s', '7s', '5s', 'Kh'], true);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFlushDraw).toBe(true);
+      expect(evaluation.isBackdoorFlushDraw).toBe(false);
+      expect(evaluation.isInsideStraightDraw).toBe(true);
+      expect(evaluation.isStraightDraw).toBe(true);
+      expect(evaluation.isComboDraw).toBe(true);
+    });
+
+    test('should identify combo draw with flush draw and wheel straight draw', () => {
+      // Hand: A♠ 2♠ 3♠ 4♠ (4 spades = flush draw, A-2-3-4 = wheel straight draw)
+      // Expected: isComboDraw should be true
+      const result = evaluateHand(['As', '2s', '3s', '4s', 'Kh'], true);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFlushDraw).toBe(true);
+      expect(evaluation.isBackdoorFlushDraw).toBe(false);
+      expect(evaluation.isStraightDraw).toBe(true);
+      expect(evaluation.isComboDraw).toBe(true);
+    });
+
+    test('should NOT identify combo draw with backdoor flush draw', () => {
+      // Hand: 9♠ 8♠ 7♠ 6♠ (3 spades = backdoor flush draw, 4 consecutive = open-ended straight draw)
+      // Expected: isComboDraw should be false (backdoor flush draw doesn't count)
+      const result = evaluateHand(['9s', '8s', '7s', '6h', 'Kh'], true);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFlushDraw).toBe(false);
+      expect(evaluation.isBackdoorFlushDraw).toBe(true);
+      expect(evaluation.isOpenEndedStraightDraw).toBe(true);
+      expect(evaluation.isComboDraw).toBe(false);
+    });
+
+    test('should NOT identify combo draw with made flush', () => {
+      // Hand: 9♠ 8♠ 7♠ 6♠ 5♠ (5 spades = made flush, 5 consecutive = made straight = straight flush)
+      // Expected: isComboDraw should be false (made hands are not draws)
+      const result = evaluateHand(['9s', '8s', '7s', '6s', '5s'], true);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isStraightFlush).toBe(true);
+      expect(evaluation.isFlushDraw).toBe(false);
+      expect(evaluation.isStraightDraw).toBe(false);
+      expect(evaluation.isComboDraw).toBe(false);
+    });
+
+    test('should NOT identify combo draw with made straight', () => {
+      // Hand: 9♠ 8♠ 7♠ 6♠ 5♠ (5 consecutive = made straight, 5 spades = made flush = straight flush)
+      // Expected: isComboDraw should be false (made hands are not draws)
+      const result = evaluateHand(['9s', '8s', '7s', '6s', '5s'], true);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isStraightFlush).toBe(true);
+      expect(evaluation.isStraightDraw).toBe(false);
+      expect(evaluation.isFlushDraw).toBe(false);
+      expect(evaluation.isComboDraw).toBe(false);
+    });
+
+    test('should identify combo draw with different suits', () => {
+      // Hand: 9♠ 8♠ 7♠ 6♠ (4 spades = flush draw, 4 consecutive = straight draw)
+      // Expected: isComboDraw should be true
+      const result = evaluateHand(['9s', '8s', '7s', '6s', 'Kd'], true);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFlushDraw).toBe(true);
+      expect(evaluation.isOpenEndedStraightDraw).toBe(true);
+      expect(evaluation.isComboDraw).toBe(true);
+    });
+
+    test('should identify combo draw in non-strict mode', () => {
+      // Hand: 9♠ 8♠ 7♠ 6♠ (4 spades = flush draw, 4 consecutive = straight draw)
+      // Expected: isComboDraw should be true in non-strict mode
+      const result = evaluateHand(['9s', '8s', '7s', '6s', 'Kh'], false);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFlushDraw).toBe(true);
+      expect(evaluation.isOpenEndedStraightDraw).toBe(true);
+      expect(evaluation.isComboDraw).toBe(true);
+    });
+
+    test('should identify combo draw with inside straight draw and flush draw', () => {
+      // Hand: K♠ Q♠ J♠ 9♠ (4 spades = flush draw, K-Q-J-9 = inside straight draw)
+      // Expected: isComboDraw should be true
+      const result = evaluateHand(['Ks', 'Qs', 'Js', '9s', '2h'], true);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFlushDraw).toBe(true);
+      expect(evaluation.isInsideStraightDraw).toBe(true);
+      expect(evaluation.isComboDraw).toBe(true);
+    });
+
+    test('should identify combo draw with wheel inside straight draw', () => {
+      // Hand: A♠ 2♠ 3♠ 5♠ (4 spades = flush draw, A-2-3-5 = inside wheel straight draw)
+      // Expected: isComboDraw should be true
+      const result = evaluateHand(['As', '2s', '3s', '5s', 'Kh'], true);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFlushDraw).toBe(true);
+      expect(evaluation.isInsideStraightDraw).toBe(true);
+      expect(evaluation.isComboDraw).toBe(true);
+    });
+
+    test('should NOT identify combo draw with only flush draw', () => {
+      // Hand: K♠ Q♠ J♠ 8♠ (4 spades = flush draw, but no straight draw - K-Q-J-8 is not a straight draw)
+      // Expected: isComboDraw should be false
+      const result = evaluateHand(['Ks', 'Qs', 'Js', '8s', '2h'], true);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFlushDraw).toBe(true);
+      expect(evaluation.isStraightDraw).toBe(false);
+      expect(evaluation.isOpenEndedStraightDraw).toBe(false);
+      expect(evaluation.isInsideStraightDraw).toBe(false);
+      expect(evaluation.isComboDraw).toBe(false);
+    });
+
+    test('should NOT identify combo draw with only straight draw', () => {
+      // Hand: 9♠ 8♠ 7♠ 6♠ (4 consecutive = straight draw, but mixed suits = no flush draw)
+      // Expected: isComboDraw should be false
+      const result = evaluateHand(['9s', '8h', '7d', '6c', 'Kh'], true);
+      const evaluationKey = Object.keys(result)[0];
+      const evaluation = result[evaluationKey];
+      
+      expect(evaluation.isFlushDraw).toBe(false);
+      expect(evaluation.isOpenEndedStraightDraw).toBe(true);
+      expect(evaluation.isComboDraw).toBe(false);
+    });
+  });
+
   describe('Multiple Hand Types', () => {
     test('should have separate keyCards for pair and flush draw', () => {
       const result = evaluateHand(['As', 'Ah', 'Ks', 'Qs', 'Js']);
@@ -1206,6 +1365,186 @@ describe('keyCards and kickerCards', () => {
       });
       expect(evaluation.kickerCards.isPair).toEqual(sortedKickerCards);
     });
+  });
+});
+
+// ==================== UNDER PAIR TESTS ====================
+// Under Pair: A pocket pair smaller than the smallest board card
+// This is a specific categorization for pairs that are lower than all board cards
+
+describe('Under Pair', () => {
+  test('should identify under pair when pocket pair is smaller than all board cards', () => {
+    // Board: K♠ Q♠ J♠ 8♠ (all cards higher than 7, non-consecutive, mixed suits)
+    // Hand: 77 (pocket pair of sevens)
+    // Expected: isUnderPair should be true (when implemented)
+    // Use non-strict mode to check all combinations
+    const board = ['Ks', 'Qh', 'Jd', '8c'];
+    const hand = ['7c', '7h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, false);
+    // Find the combination that includes the pocket pair
+    const pairCombination = Object.entries(result).find(([key, evalObj]) => 
+      evalObj.isPair && key.includes('7c') && key.includes('7h')
+    );
+    
+    expect(pairCombination).toBeDefined();
+    const evaluation = pairCombination[1];
+    expect(evaluation.isPair).toBe(true);
+    expect(evaluation.isUnderPair).toBe(true);
+  });
+
+  test('should identify under pair with 5-card board', () => {
+    // Board: A♠ K♠ Q♠ J♠ 9♠ (all cards higher than 8, non-consecutive, mixed suits)
+    // Hand: 88 (pocket pair of eights)
+    // Expected: isUnderPair should be true
+    // Use non-strict mode to check all combinations
+    const board = ['As', 'Kh', 'Qd', 'Jc', '9s'];
+    const hand = ['8c', '8h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, false);
+    // Find the combination that includes the pocket pair
+    const pairCombination = Object.entries(result).find(([key, evalObj]) => 
+      evalObj.isPair && key.includes('8c') && key.includes('8h')
+    );
+    
+    expect(pairCombination).toBeDefined();
+    const evaluation = pairCombination[1];
+    expect(evaluation.isPair).toBe(true);
+    expect(evaluation.isUnderPair).toBe(true);
+  });
+
+  test('should identify under pair with low board cards', () => {
+    // Board: 5♠ 6♠ 7♠ 9♠ (all cards higher than 4, non-consecutive, mixed suits)
+    // Hand: 44 (pocket pair of fours)
+    // Expected: isUnderPair should be true
+    // Use non-strict mode to check all combinations
+    const board = ['5s', '6h', '7d', '9c'];
+    const hand = ['4c', '4h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, false);
+    // Find the combination that includes the pocket pair
+    const pairCombination = Object.entries(result).find(([key, evalObj]) => 
+      evalObj.isPair && key.includes('4c') && key.includes('4h')
+    );
+    
+    expect(pairCombination).toBeDefined();
+    const evaluation = pairCombination[1];
+    expect(evaluation.isPair).toBe(true);
+    expect(evaluation.isUnderPair).toBe(true);
+  });
+
+  test('should identify under pair with deuces', () => {
+    // Board: 3♠ 4♠ 5♠ 8♠ (all cards higher than 2, non-consecutive, mixed suits)
+    // Hand: 22 (pocket pair of deuces)
+    // Expected: isUnderPair should be true
+    // Use non-strict mode to check all combinations
+    const board = ['3s', '4h', '5d', '8c'];
+    const hand = ['2c', '2h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, false);
+    // Find the combination that includes the pocket pair
+    const pairCombination = Object.entries(result).find(([key, evalObj]) => 
+      evalObj.isPair && key.includes('2c') && key.includes('2h')
+    );
+    
+    expect(pairCombination).toBeDefined();
+    const evaluation = pairCombination[1];
+    expect(evaluation.isPair).toBe(true);
+    expect(evaluation.isUnderPair).toBe(true);
+  });
+
+  test('should NOT identify under pair when pair matches board card', () => {
+    // Board: K♠ Q♠ J♠ 9♠ (has a 9)
+    // Hand: 99 (pocket pair of nines)
+    // Expected: isUnderPair should be false (pair matches board card, making three of a kind)
+    const board = ['Ks', 'Qs', 'Js', '9s'];
+    const hand = ['9c', '9h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isThreeOfAKind).toBe(true);
+    expect(evaluation.isPair).toBe(false);
+    expect(evaluation.isUnderPair).toBe(false);
+  });
+
+  test('should NOT identify under pair when pair is higher than smallest board card', () => {
+    // Board: K♠ Q♠ J♠ 2♠ (has a 2)
+    // Hand: 99 (pocket pair of nines)
+    // Expected: isUnderPair should be false (9 is higher than 2)
+    const board = ['Ks', 'Qs', 'Js', '2s'];
+    const hand = ['9c', '9h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isPair).toBe(true);
+    expect(evaluation.isUnderPair).toBe(false);
+  });
+
+  test('should NOT identify under pair when board has lower card', () => {
+    // Board: A♠ K♠ Q♠ 3♠ (has a 3)
+    // Hand: 55 (pocket pair of fives)
+    // Expected: isUnderPair should be false (5 is higher than 3)
+    const board = ['As', 'Ks', 'Qs', '3s'];
+    const hand = ['5c', '5h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, true);
+    const evaluationKey = Object.keys(result)[0];
+    const evaluation = result[evaluationKey];
+    
+    expect(evaluation.isPair).toBe(true);
+    expect(evaluation.isUnderPair).toBe(false);
+  });
+
+  test('should identify under pair in strict mode', () => {
+    // Board: T♠ 9♠ 8♠ 7♠ (all cards higher than 6, non-consecutive, mixed suits)
+    // Hand: 66 (pocket pair of sixes)
+    // Expected: isUnderPair should be true in strict mode
+    // Use non-strict mode to check all combinations (strict mode only returns best hand)
+    const board = ['Th', '9d', '8c', '7s'];
+    const hand = ['6c', '6h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, false);
+    // Find the combination that includes the pocket pair
+    const pairCombination = Object.entries(result).find(([key, evalObj]) => 
+      evalObj.isPair && key.includes('6c') && key.includes('6h')
+    );
+    
+    expect(pairCombination).toBeDefined();
+    const evaluation = pairCombination[1];
+    expect(evaluation.isPair).toBe(true);
+    expect(evaluation.isUnderPair).toBe(true);
+  });
+
+  test('should identify under pair in non-strict mode', () => {
+    // Board: J♠ T♠ 9♠ 8♠ (all cards higher than 7, non-consecutive, mixed suits)
+    // Hand: 77 (pocket pair of sevens)
+    // Expected: isUnderPair should be true in non-strict mode
+    const board = ['Jh', 'Td', '9c', '8s'];
+    const hand = ['7c', '7h'];
+    const allCards = [...board, ...hand];
+    
+    const result = evaluateHand(allCards, false);
+    // Find the combination that includes the pocket pair
+    const pairCombination = Object.entries(result).find(([key, evalObj]) => 
+      evalObj.isPair && key.includes('7c') && key.includes('7h')
+    );
+    
+    expect(pairCombination).toBeDefined();
+    const evaluation = pairCombination[1];
+    expect(evaluation.isPair).toBe(true);
+    expect(evaluation.isUnderPair).toBe(true);
   });
 });
 
