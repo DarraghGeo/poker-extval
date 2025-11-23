@@ -1704,4 +1704,7 @@ function evaluateHand(cards, strict = true) {
 }
 
 module.exports = { evaluateHand, HandEvaluator };
+module.exports.default = evaluateHand;
+module.exports.evaluateHand = evaluateHand; // Explicit (redundant but safe)
+module.exports.HandEvaluator = HandEvaluator; // Explicit (redundant but safe)
 
