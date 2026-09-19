@@ -2367,3 +2367,483 @@ describe('Strict Mode Combination Filtering - Other Hand Combinations', () => {
     expect(evaluation.isPair).toBe(false);
   });
 });
+
+// ==================== OVERCARD TESTS ====================
+// Overcards: categorization of the player's two hole cards relative to the board.
+// A hole card is an overcard when it beats every board card, an undercard when every board
+// card beats it, and a middle card when it sits strictly between the highest and lowest board
+// ranks. A hole card that matches a board rank pairs the board and belongs to no category.
+// These categorizations require hole cards to be supplied via the third argument.
+
+const OVERCARD_CATEGORIES = [
+  'isTwoOvercards',
+  'isOvercardAndMiddleCard',
+  'isOvercardAndUndercard',
+  'isTwoMiddleCards',
+  'isMiddleAndUndercard',
+  'isTwoUndercards'
+];
+
+/**
+ * Evaluates a board + hole cards and returns the single evaluation object.
+ * Uses strict mode, which collapses multi-card hands to the best combination.
+ */
+function evaluateWithHoleCards(board, holeCards, strict = true) {
+  const result = evaluateHand([...board, ...holeCards], strict, holeCards);
+  const evaluationKey = Object.keys(result)[0];
+  return result[evaluationKey];
+}
+
+describe('Overcards', () => {
+  describe('Two overcards', () => {
+    test('should identify two overcards when both hole cards beat every board card', () => {
+      // Board: 9♠ 7♥ 4♦ 2♣, Hand: AK (both beat the 9)
+      const evaluation = evaluateWithHoleCards(['9s', '7h', '4d', '2c'], ['Ad', 'Kh']);
+
+      expect(evaluation.isTwoOvercards).toBe(true);
+      expect(evaluation.isOvercard).toBe(true);
+    });
+
+    test('should identify two overcards on a three-card board', () => {
+      // Board: 8♠ 5♥ 2♦, Hand: QJ
+      const evaluation = evaluateWithHoleCards(['8s', '5h', '2d'], ['Qd', 'Jh']);
+
+      expect(evaluation.isTwoOvercards).toBe(true);
+      expect(evaluation.isOvercard).toBe(true);
+    });
+
+    test('should identify two overcards on a five-card board', () => {
+      // Board: T♠ 8♥ 6♦ 4♣ 2♠, Hand: AQ
+      const evaluation = evaluateWithHoleCards(['Ts', '8h', '6d', '4c', '2s'], ['Ad', 'Qh']);
+
+      expect(evaluation.isTwoOvercards).toBe(true);
+      expect(evaluation.isOvercard).toBe(true);
+    });
+
+    test('should identify a pocket pair above the board as two overcards', () => {
+      // Board: 9♠ 7♥ 4♦ 2♣, Hand: AA (the mirror image of an under pair)
+      const evaluation = evaluateWithHoleCards(['9s', '7h', '4d', '2c'], ['Ad', 'Ah']);
+
+      expect(evaluation.isTwoOvercards).toBe(true);
+      expect(evaluation.isUnderPair).toBe(false);
+    });
+
+    test('should not identify two overcards when only one hole card beats the board', () => {
+      // Board: K♠ Q♥ 8♦ 3♣, Hand: AJ (only the ace beats the king)
+      const evaluation = evaluateWithHoleCards(['Ks', 'Qh', '8d', '3c'], ['Ad', 'Jh']);
+
+      expect(evaluation.isTwoOvercards).toBe(false);
+      expect(evaluation.isOvercard).toBe(true);
+    });
+
+    test('should not identify two overcards when a hole card ties the top board card', () => {
+      // Board: K♠ Q♥ 8♦ 3♣, Hand: AK (the king pairs the board rather than beating it)
+      const evaluation = evaluateWithHoleCards(['Ks', 'Qh', '8d', '3c'], ['Ad', 'Kh']);
+
+      expect(evaluation.isTwoOvercards).toBe(false);
+      expect(evaluation.isOvercard).toBe(true);
+    });
+  });
+
+  describe('Overcard and middle card', () => {
+    test('should identify overcard and middle card', () => {
+      // Board: K♠ Q♥ 8♦ 3♣, Hand: AJ (ace beats the board, jack sits between 3 and K)
+      const evaluation = evaluateWithHoleCards(['Ks', 'Qh', '8d', '3c'], ['Ad', 'Jh']);
+
+      expect(evaluation.isOvercardAndMiddleCard).toBe(true);
+      expect(evaluation.isOvercard).toBe(true);
+    });
+
+    test('should identify overcard and middle card when the middle card is just above the board low', () => {
+      // Board: J♠ 9♥ 5♦ 4♣, Hand: A6
+      const evaluation = evaluateWithHoleCards(['Js', '9h', '5d', '4c'], ['Ad', '6h']);
+
+      expect(evaluation.isOvercardAndMiddleCard).toBe(true);
+    });
+
+    test('should identify overcard and middle card on a three-card board', () => {
+      // Board: T♠ 7♥ 3♦, Hand: K8
+      const evaluation = evaluateWithHoleCards(['Ts', '7h', '3d'], ['Kd', '8h']);
+
+      expect(evaluation.isOvercardAndMiddleCard).toBe(true);
+    });
+
+    test('should not identify overcard and middle card when the second card pairs the board', () => {
+      // Board: K♠ Q♥ 8♦ 3♣, Hand: AQ (the queen pairs the board, so it is not a middle card)
+      const evaluation = evaluateWithHoleCards(['Ks', 'Qh', '8d', '3c'], ['Ad', 'Qs']);
+
+      expect(evaluation.isOvercardAndMiddleCard).toBe(false);
+      expect(evaluation.isOvercard).toBe(true);
+    });
+  });
+
+  describe('Overcard and undercard', () => {
+    test('should identify overcard and undercard', () => {
+      // Board: K♠ Q♥ 8♦ 3♣, Hand: A2 (ace beats the board, deuce is below the 3)
+      const evaluation = evaluateWithHoleCards(['Ks', 'Qh', '8d', '3c'], ['Ad', '2h']);
+
+      expect(evaluation.isOvercardAndUndercard).toBe(true);
+      expect(evaluation.isOvercard).toBe(true);
+    });
+
+    test('should identify overcard and undercard on a five-card board', () => {
+      // Board: Q♠ J♥ 9♦ 7♣ 5♠, Hand: A3
+      const evaluation = evaluateWithHoleCards(['Qs', 'Jh', '9d', '7c', '5s'], ['Ad', '3h']);
+
+      expect(evaluation.isOvercardAndUndercard).toBe(true);
+    });
+
+    test('should identify overcard and undercard on a tight board', () => {
+      // Board: 9♠ 8♥ 7♦ (only 6 and below are undercards), Hand: K6
+      const evaluation = evaluateWithHoleCards(['9s', '8h', '7d'], ['Kd', '6h']);
+
+      expect(evaluation.isOvercardAndUndercard).toBe(true);
+    });
+  });
+
+  describe('Two middle cards', () => {
+    test('should identify two middle cards', () => {
+      // Board: K♠ Q♥ 8♦ 3♣, Hand: JT (both sit strictly between 3 and K)
+      const evaluation = evaluateWithHoleCards(['Ks', 'Qh', '8d', '3c'], ['Jd', 'Th']);
+
+      expect(evaluation.isTwoMiddleCards).toBe(true);
+      expect(evaluation.isOvercard).toBe(false);
+    });
+
+    test('should identify two middle cards straddling a board card', () => {
+      // Board: A♠ 9♥ 2♦, Hand: T5 (ten above the nine, five below it, both inside A-2)
+      const evaluation = evaluateWithHoleCards(['As', '9h', '2d'], ['Td', '5h']);
+
+      expect(evaluation.isTwoMiddleCards).toBe(true);
+    });
+
+    test('should identify a middle pocket pair as two middle cards', () => {
+      // Board: A♠ K♥ 4♦ 2♣, Hand: 88
+      const evaluation = evaluateWithHoleCards(['As', 'Kh', '4d', '2c'], ['8d', '8h']);
+
+      expect(evaluation.isTwoMiddleCards).toBe(true);
+      expect(evaluation.isUnderPair).toBe(false);
+    });
+
+    test('should not identify two middle cards when one hole card pairs the board', () => {
+      // Board: K♠ Q♥ 8♦ 3♣, Hand: J8 (the eight pairs the board)
+      const evaluation = evaluateWithHoleCards(['Ks', 'Qh', '8d', '3c'], ['Jd', '8h']);
+
+      expect(evaluation.isTwoMiddleCards).toBe(false);
+    });
+  });
+
+  describe('Middle and undercard', () => {
+    test('should identify middle and undercard', () => {
+      // Board: K♠ Q♥ 8♦ 3♣, Hand: J2
+      const evaluation = evaluateWithHoleCards(['Ks', 'Qh', '8d', '3c'], ['Jd', '2h']);
+
+      expect(evaluation.isMiddleAndUndercard).toBe(true);
+      expect(evaluation.isOvercard).toBe(false);
+    });
+
+    test('should identify middle and undercard on a three-card board', () => {
+      // Board: A♠ 9♥ 6♦, Hand: 74
+      const evaluation = evaluateWithHoleCards(['As', '9h', '6d'], ['7d', '4h']);
+
+      expect(evaluation.isMiddleAndUndercard).toBe(true);
+    });
+  });
+
+  describe('Two undercards', () => {
+    test('should identify two undercards', () => {
+      // Board: K♠ Q♥ 8♦ 7♣, Hand: 42 (both below the seven)
+      const evaluation = evaluateWithHoleCards(['Ks', 'Qh', '8d', '7c'], ['4d', '2h']);
+
+      expect(evaluation.isTwoUndercards).toBe(true);
+      expect(evaluation.isOvercard).toBe(false);
+    });
+
+    test('should identify an under pair as two undercards', () => {
+      // Board: K♠ Q♥ J♦ 8♣, Hand: 77 (the under pair case, seen from the hole cards)
+      const evaluation = evaluateWithHoleCards(['Ks', 'Qh', 'Jd', '8c'], ['7c', '7h']);
+
+      expect(evaluation.isTwoUndercards).toBe(true);
+    });
+
+    test('should treat an ace as a high card, never an undercard', () => {
+      // Board: K♠ Q♥ J♦ 8♣, Hand: A2 (aces rank high even alongside wheel cards)
+      const evaluation = evaluateWithHoleCards(['Ks', 'Qh', 'Jd', '8c'], ['Ad', '2h']);
+
+      expect(evaluation.isTwoUndercards).toBe(false);
+      expect(evaluation.isOvercardAndUndercard).toBe(true);
+    });
+  });
+
+  describe('Board edge cases', () => {
+    test('should classify against the highest and lowest board cards on a paired board', () => {
+      // Board: K♠ K♥ 8♦ 8♣ (two distinct ranks), Hand: TJ -> both between 8 and K
+      const evaluation = evaluateWithHoleCards(['Ks', 'Kh', '8d', '8c'], ['Td', 'Jh']);
+
+      expect(evaluation.isTwoMiddleCards).toBe(true);
+    });
+
+    test('should allow no middle cards when every board card shares one rank', () => {
+      // Board: 8♠ 8♥ 8♦, Hand: AK -> both overcards, no middle band exists
+      const evaluation = evaluateWithHoleCards(['8s', '8h', '8d'], ['Ad', 'Kh']);
+
+      expect(evaluation.isTwoOvercards).toBe(true);
+      expect(evaluation.isTwoMiddleCards).toBe(false);
+    });
+
+    test('should classify both hole cards as undercards below a single-rank board', () => {
+      // Board: 8♠ 8♥ 8♦, Hand: 52
+      const evaluation = evaluateWithHoleCards(['8s', '8h', '8d'], ['5d', '2h']);
+
+      expect(evaluation.isTwoUndercards).toBe(true);
+    });
+
+    test('should report no category when both hole cards pair the board', () => {
+      // Board: K♠ Q♥ 8♦ 3♣, Hand: KQ (both pair the board)
+      const evaluation = evaluateWithHoleCards(['Ks', 'Qh', '8d', '3c'], ['Kd', 'Qc']);
+
+      expect(evaluation.isOvercard).toBe(false);
+      for (const category of OVERCARD_CATEGORIES) {
+        expect(evaluation[category]).toBe(false);
+      }
+    });
+
+    test('should classify against the board only, ignoring the other hole card', () => {
+      // Board: 5♠ 4♥ 3♦, Hand: A2 -> the deuce is below the whole board despite the ace
+      const evaluation = evaluateWithHoleCards(['5s', '4h', '3d'], ['Ad', '2h']);
+
+      expect(evaluation.isOvercardAndUndercard).toBe(true);
+    });
+  });
+
+  describe('Without hole cards', () => {
+    test('should report all overcard categories as false when hole cards are omitted', () => {
+      const result = evaluateHand(['Ks', 'Qh', '8d', '3c', 'Ad', 'Jh']);
+
+      for (const evaluation of Object.values(result)) {
+        expect(evaluation.isOvercard).toBe(false);
+        for (const category of OVERCARD_CATEGORIES) {
+          expect(evaluation[category]).toBe(false);
+        }
+      }
+    });
+
+    test('should still define every overcard property when hole cards are omitted', () => {
+      const result = evaluateHand(['As', 'Ks', 'Qs', 'Js', 'Ts']);
+      const evaluation = result[Object.keys(result)[0]];
+
+      expect(evaluation).toHaveProperty('isOvercard');
+      for (const category of OVERCARD_CATEGORIES) {
+        expect(evaluation).toHaveProperty(category);
+      }
+    });
+
+    test('should report all overcard categories as false when hole cards are explicitly null', () => {
+      const evaluation = evaluateHand(['9s', '7h', '4d', '2c', 'Ad', 'Kh'], true, null);
+      const first = evaluation[Object.keys(evaluation)[0]];
+
+      expect(first.isTwoOvercards).toBe(false);
+      expect(first.isOvercard).toBe(false);
+    });
+  });
+
+  describe('Mutual exclusivity', () => {
+    test('should mark at most one two-card category for any hole cards', () => {
+      // Board: K♠ Q♥ 8♦ 3♣ against every pair of hole cards from the remaining deck
+      const board = ['Ks', 'Qh', '8d', '3c'];
+      const ranks = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2'];
+      const suits = ['s', 'h', 'd', 'c'];
+      const deck = [];
+      for (const rank of ranks) {
+        for (const suit of suits) {
+          const card = rank + suit;
+          if (!board.includes(card)) deck.push(card);
+        }
+      }
+
+      let checked = 0;
+      for (let i = 0; i < deck.length; i++) {
+        for (let j = i + 1; j < deck.length; j++) {
+          const evaluation = evaluateWithHoleCards(board, [deck[i], deck[j]]);
+          const trueCategories = OVERCARD_CATEGORIES.filter(c => evaluation[c]);
+          expect(trueCategories.length).toBeLessThanOrEqual(1);
+          checked++;
+        }
+      }
+
+      expect(checked).toBe((deck.length * (deck.length - 1)) / 2);
+    });
+
+    test('should set isOvercard exactly when an overcard category is true or one card pairs the board', () => {
+      const board = ['Ts', '7h', '4d'];
+      const cases = [
+        { hole: ['Ad', 'Kh'], overcard: true },
+        { hole: ['Ad', '8h'], overcard: true },
+        { hole: ['Ad', '2h'], overcard: true },
+        { hole: ['Ad', 'Th'], overcard: true },
+        { hole: ['9d', '8h'], overcard: false },
+        { hole: ['9d', '2h'], overcard: false },
+        { hole: ['3d', '2h'], overcard: false },
+        { hole: ['Td', '7c'], overcard: false }
+      ];
+
+      for (const { hole, overcard } of cases) {
+        const evaluation = evaluateWithHoleCards(board, hole);
+        expect(evaluation.isOvercard).toBe(overcard);
+      }
+    });
+  });
+
+  describe('Key cards and kicker cards', () => {
+    test('should list both hole cards as key cards for two overcards', () => {
+      const evaluation = evaluateWithHoleCards(['9s', '7h', '4d', '2c'], ['Kh', 'Ad']);
+
+      expect(evaluation.keyCards.isTwoOvercards).toEqual(['Ad', 'Kh']);
+      expect(evaluation.keyCards.isOvercard).toEqual(['Ad', 'Kh']);
+    });
+
+    test('should list only the overcard as key cards for the general overcard property', () => {
+      const evaluation = evaluateWithHoleCards(['Ks', 'Qh', '8d', '3c'], ['Ad', 'Jh']);
+
+      expect(evaluation.keyCards.isOvercard).toEqual(['Ad']);
+      expect(evaluation.keyCards.isOvercardAndMiddleCard).toEqual(['Ad', 'Jh']);
+    });
+
+    test('should use the board as kicker cards for overcard categories', () => {
+      const evaluation = evaluateWithHoleCards(['9s', '7h', '4d', '2c'], ['Ad', 'Kh']);
+
+      expect(evaluation.kickerCards.isTwoOvercards).toEqual(['9s', '7h', '4d', '2c']);
+    });
+
+    test('should include the non-overcard hole card in the general overcard kickers', () => {
+      const evaluation = evaluateWithHoleCards(['Ks', 'Qh', '8d', '3c'], ['Ad', 'Jh']);
+
+      expect(evaluation.kickerCards.isOvercard).toEqual(['Ks', 'Qh', 'Jh', '8d', '3c']);
+    });
+
+    test('should return empty key and kicker arrays for false overcard categories', () => {
+      const evaluation = evaluateWithHoleCards(['9s', '7h', '4d', '2c'], ['Ad', 'Kh']);
+
+      expect(evaluation.keyCards.isTwoUndercards).toEqual([]);
+      expect(evaluation.kickerCards.isTwoUndercards).toEqual([]);
+      expect(evaluation.keyCards.isOvercardAndMiddleCard).toEqual([]);
+      expect(evaluation.kickerCards.isOvercardAndMiddleCard).toEqual([]);
+    });
+
+    test('should return empty overcard key cards when hole cards are omitted', () => {
+      const result = evaluateHand(['9s', '7h', '4d', '2c', 'Ad', 'Kh']);
+      const evaluation = result[Object.keys(result)[0]];
+
+      expect(evaluation.keyCards.isOvercard).toEqual([]);
+      expect(evaluation.kickerCards.isOvercard).toEqual([]);
+    });
+  });
+
+  describe('Interaction with made hands, strict mode and combinations', () => {
+    test('should categorize hole cards independently of the made hand', () => {
+      // Board: K♠ Q♥ T♦ 3♣, Hand: AJ -> makes a straight, and is still overcard + middle card
+      const evaluation = evaluateWithHoleCards(['Ks', 'Qh', 'Td', '3c'], ['Ad', 'Jh']);
+
+      expect(evaluation.isStraight).toBe(true);
+      expect(evaluation.isOvercardAndMiddleCard).toBe(true);
+      expect(evaluation.isOvercard).toBe(true);
+    });
+
+    test('should report the same overcard categories in strict and non-strict mode', () => {
+      const board = ['Ks', 'Qh', '8d', '3c'];
+      const hand = ['Ad', 'Jh'];
+
+      const strict = evaluateWithHoleCards(board, hand, true);
+      const nonStrict = evaluateWithHoleCards(board, hand, false);
+
+      expect(strict.isOvercard).toBe(nonStrict.isOvercard);
+      for (const category of OVERCARD_CATEGORIES) {
+        expect(strict[category]).toBe(nonStrict[category]);
+      }
+    });
+
+    test('should report identical overcard categories across every 5-card combination', () => {
+      // 7 cards -> 21 combinations, most of which exclude one or both hole cards
+      const board = ['Ks', 'Qh', '8d', '3c', '6s'];
+      const hand = ['Ad', 'Jh'];
+      const result = evaluateHand([...board, ...hand], false, hand);
+
+      expect(Object.keys(result).length).toBe(21);
+      for (const evaluation of Object.values(result)) {
+        expect(evaluation.isOvercardAndMiddleCard).toBe(true);
+        expect(evaluation.isOvercard).toBe(true);
+        expect(evaluation.keyCards.isOvercard).toEqual(['Ad']);
+      }
+    });
+
+    test('should accept hole cards that fall outside the evaluated combination', () => {
+      // The best 5-card combination here is the board flush, which contains neither hole card
+      const board = ['Ks', 'Qs', '8s', '3s', '6s'];
+      const hand = ['Ad', 'Jh'];
+      const result = evaluateHand([...board, ...hand], true, hand);
+      const evaluation = result[Object.keys(result)[0]];
+
+      expect(evaluation.isFlush).toBe(true);
+      expect(evaluation.isOvercardAndMiddleCard).toBe(true);
+    });
+  });
+
+  describe('HandEvaluator class', () => {
+    test('should expose the supplied hole cards', () => {
+      const evaluator = new HandEvaluator(['9s', '7h', '4d', '2c', 'Ad', 'Kh'], true, ['Ad', 'Kh']);
+
+      expect(evaluator.holeCards).toEqual(['Ad', 'Kh']);
+    });
+
+    test('should expose null hole cards when none are supplied', () => {
+      const evaluator = new HandEvaluator(['9s', '7h', '4d', '2c', 'Ad', 'Kh']);
+
+      expect(evaluator.holeCards).toBeNull();
+    });
+
+    test('should produce the same result as evaluateHand', () => {
+      const cards = ['9s', '7h', '4d', '2c', 'Ad', 'Kh'];
+      const holeCards = ['Ad', 'Kh'];
+      const evaluator = new HandEvaluator(cards, true, holeCards);
+
+      expect(evaluator.evaluation).toEqual(evaluateHand(cards, true, holeCards));
+    });
+  });
+
+  describe('Hole card validation', () => {
+    const cards = ['9s', '7h', '4d', '2c', 'Ad', 'Kh'];
+
+    test('should throw when hole cards are not an array', () => {
+      expect(() => evaluateHand(cards, true, 'Ad')).toThrow('Hole cards must be an array');
+    });
+
+    test('should throw when fewer than 2 hole cards are supplied', () => {
+      expect(() => evaluateHand(cards, true, ['Ad'])).toThrow('Expected exactly 2 hole cards, received 1');
+    });
+
+    test('should throw when more than 2 hole cards are supplied', () => {
+      expect(() => evaluateHand(cards, true, ['Ad', 'Kh', '9s'])).toThrow('Expected exactly 2 hole cards, received 3');
+    });
+
+    test('should throw when no hole cards are supplied in an empty array', () => {
+      expect(() => evaluateHand(cards, true, [])).toThrow('Expected exactly 2 hole cards, received 0');
+    });
+
+    test('should throw when a hole card is not a string', () => {
+      expect(() => evaluateHand(cards, true, [9, 'Ad'])).toThrow('Hole card at index 0 must be a string');
+    });
+
+    test('should throw when hole cards are duplicated', () => {
+      expect(() => evaluateHand(cards, true, ['Ad', 'Ad'])).toThrow('Duplicate hole card found: "Ad"');
+    });
+
+    test('should throw when a hole card is not present in the hand', () => {
+      expect(() => evaluateHand(cards, true, ['Ac', 'Kh'])).toThrow('Hole card not found in cards: "Ac"');
+    });
+
+    test('should validate the cards array before the hole cards', () => {
+      expect(() => evaluateHand(['As', 'Ks', 'Qs', 'Js'], true, ['As', 'Ks']))
+        .toThrow('Expected at least 5 cards, received 4');
+    });
+  });
+});

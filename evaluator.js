@@ -19,6 +19,23 @@
  * const result = evaluator.evaluation;
  * // result contains 6 key-value pairs, one for each 5-card combination
  */
+/**
+ * Evaluation properties that categorize the player's hole cards relative to the board.
+ * These describe the two hole cards rather than a 5-card hand, so their kicker cards are
+ * drawn from the full hand (the board) rather than from the 5-card combination.
+ *
+ * @constant {Set<string>}
+ */
+const HOLE_CARD_CATEGORIES = new Set([
+  'isOvercard',
+  'isTwoOvercards',
+  'isOvercardAndMiddleCard',
+  'isOvercardAndUndercard',
+  'isTwoMiddleCards',
+  'isMiddleAndUndercard',
+  'isTwoUndercards'
+]);
+
 class HandEvaluator {
   /**
    * Creates an instance of HandEvaluator.
@@ -28,8 +45,12 @@ class HandEvaluator {
    *   - s is suit: s (spades), h (hearts), d (diamonds), c (clubs)
    * @param {boolean} [strict=true] - If true, only the strongest made hand and stronger draws are marked as true.
    *   If false, all applicable hand types are marked (current behavior).
+   * @param {string[]|null} [holeCards=null] - Optional array of exactly 2 cards identifying the player's
+   *   hole cards. Required for the overcard categorizations (isOvercard, isTwoOvercards, etc.); without it
+   *   those properties are always false. Both cards must be present in `cards`.
    * @throws {Error} If cards is not an array, has fewer than 5 cards, contains invalid format,
    *   invalid rank, invalid suit, or duplicate cards
+   * @throws {Error} If holeCards is provided but is not an array of exactly 2 distinct cards drawn from `cards`
    * @example
    * const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', 'Ts']);
    * @example
@@ -38,13 +59,63 @@ class HandEvaluator {
    * @example
    * // Non-strict mode - all applicable hands marked
    * const nonStrictEvaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Kc', 'Qs'], false);
+   * @example
+   * // With hole cards - enables overcard categorization
+   * const withHoleCards = new HandEvaluator(['Ks', 'Qh', '8d', '3c', 'Ad', 'Jh'], true, ['Ad', 'Jh']);
    */
-  constructor(cards, strict = true, originalCards = null) {
+  constructor(cards, strict = true, holeCards = null, originalCards = null) {
     this.#validateCards(cards);
     this.cards = cards;
     this.strict = strict;
     this.originalCards = originalCards || (cards.length > 5 ? cards : null);
+    if (holeCards === null || holeCards === undefined) {
+      this.holeCards = null;
+    } else {
+      this.#validateHoleCards(holeCards, this.originalCards || cards);
+      this.holeCards = holeCards;
+    }
     this.evaluation = this.#evaluateAllCombinations();
+  }
+
+  /**
+   * Validates the optional hole cards array.
+   * Hole cards must be exactly 2 distinct cards that appear in the full hand.
+   *
+   * @private
+   * @param {string[]} holeCards - Array of hole card strings to validate
+   * @param {string[]} fullHand - The complete set of cards the hole cards must be drawn from
+   * @throws {Error} If holeCards is not an array
+   * @throws {Error} If holeCards does not contain exactly 2 cards
+   * @throws {Error} If any hole card is not a string
+   * @throws {Error} If duplicate hole cards are found
+   * @throws {Error} If a hole card is not present in the full hand
+   */
+  #validateHoleCards(holeCards, fullHand) {
+    if (!Array.isArray(holeCards)) {
+      throw new Error('Hole cards must be an array');
+    }
+    if (holeCards.length !== 2) {
+      throw new Error(`Expected exactly 2 hole cards, received ${holeCards.length}`);
+    }
+
+    const handSet = new Set(fullHand);
+    const seenHoleCards = new Set();
+
+    for (let i = 0; i < holeCards.length; i++) {
+      const card = holeCards[i];
+
+      if (typeof card !== 'string') {
+        throw new Error(`Hole card at index ${i} must be a string`);
+      }
+      if (seenHoleCards.has(card)) {
+        throw new Error(`Duplicate hole card found: "${card}"`);
+      }
+      seenHoleCards.add(card);
+
+      if (!handSet.has(card)) {
+        throw new Error(`Hole card not found in cards: "${card}"`);
+      }
+    }
   }
 
   /**
@@ -201,6 +272,7 @@ class HandEvaluator {
     this.#isStraightDraw();
     this.#isComboDraw();
     this.#isUnderPair();
+    this.#isOvercards();
     this.#isHighCard();
     
     // Add keyCards and kickerCards before restoring original evaluation
@@ -418,7 +490,7 @@ class HandEvaluator {
     const result = {};
     for (const combination of combinations) {
       const key = this.#formatHandKey(combination);
-      const tempEvaluator = new HandEvaluator(combination, this.strict, this.originalCards);
+      const tempEvaluator = new HandEvaluator(combination, this.strict, this.holeCards, this.originalCards);
       const evaluationKey = Object.keys(tempEvaluator.evaluation)[0];
       result[key] = tempEvaluator.evaluation[evaluationKey];
     }
@@ -1461,6 +1533,32 @@ class HandEvaluator {
   }
 
   /**
+   * Gets key cards for the general overcard property (the hole cards that beat the whole board).
+   *
+   * @private
+   * @returns {string[]} Array of 1 or 2 overcards if isOvercard, empty array otherwise
+   */
+  #getKeyCardsForOvercard() {
+    if (!this.evaluation.isOvercard) return [];
+    const classifications = this.#classifyHoleCards();
+    return this.holeCards
+      .filter((card, i) => classifications[i] === 'over')
+      .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+  }
+
+  /**
+   * Gets key cards for a two-card hole card categorization (both hole cards, sorted high to low).
+   *
+   * @private
+   * @param {string} category - The evaluation property name (e.g. 'isTwoOvercards')
+   * @returns {string[]} Array of both hole cards if the category is true, empty array otherwise
+   */
+  #getKeyCardsForHoleCardCategory(category) {
+    if (!this.evaluation[category]) return [];
+    return [...this.holeCards].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+  }
+
+  /**
    * Gets key cards for wheel straight (5 cards forming wheel).
    * 
    * @private
@@ -1539,6 +1637,13 @@ class HandEvaluator {
       isInsideStraightDrawWheel: this.#getKeyCardsForInsideStraightDrawWheel(),
       isComboDraw: this.#getKeyCardsForComboDraw(),
       isUnderPair: this.#getKeyCardsForUnderPair(),
+      isOvercard: this.#getKeyCardsForOvercard(),
+      isTwoOvercards: this.#getKeyCardsForHoleCardCategory('isTwoOvercards'),
+      isOvercardAndMiddleCard: this.#getKeyCardsForHoleCardCategory('isOvercardAndMiddleCard'),
+      isOvercardAndUndercard: this.#getKeyCardsForHoleCardCategory('isOvercardAndUndercard'),
+      isTwoMiddleCards: this.#getKeyCardsForHoleCardCategory('isTwoMiddleCards'),
+      isMiddleAndUndercard: this.#getKeyCardsForHoleCardCategory('isMiddleAndUndercard'),
+      isTwoUndercards: this.#getKeyCardsForHoleCardCategory('isTwoUndercards'),
       isHighCard: this.#getKeyCardsForHighCard()
     };
   }
@@ -1559,6 +1664,14 @@ class HandEvaluator {
         result[handType] = sortedCards;
       } else if (keyCards.length === 0) {
         result[handType] = [];
+      } else if (HOLE_CARD_CATEGORIES.has(handType)) {
+        // Hole card categorizations are evaluated against the board, which may include cards
+        // outside the current 5-card combination, so kickers come from the full hand.
+        const keyCardsSet = new Set(keyCards);
+        const fullHand = this.originalCards || this.cards;
+        result[handType] = fullHand
+          .filter(c => !keyCardsSet.has(c))
+          .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
       } else {
         const keyCardsSet = new Set(keyCards);
         result[handType] = this.cards
@@ -1667,6 +1780,95 @@ class HandEvaluator {
     return null;
   }
   
+  // ==================== OVERCARDS ====================
+
+  /**
+   * Classifies each hole card relative to the board (every card in the full hand that is not a
+   * hole card). A card is an "overcard" when its rank beats every board card, an "undercard" when
+   * every board card beats it, and a "middle card" when it falls strictly between the highest and
+   * lowest board ranks. A hole card whose rank matches any board rank pairs the board and is
+   * classified as "paired", which belongs to none of the three categories.
+   *
+   * @private
+   * @returns {string[]|null} Array of 2 classifications ('over', 'middle', 'under' or 'paired')
+   *   parallel to this.holeCards, or null if hole cards were not supplied
+   * @example
+   * // Board: K Q 8 3, hole cards: A J
+   * this.#classifyHoleCards(); // Returns ['over', 'middle']
+   */
+  #classifyHoleCards() {
+    if (!this.holeCards || this.holeCards.length !== 2) return null;
+
+    const fullHand = this.originalCards || this.cards;
+    const holeCardSet = new Set(this.holeCards);
+    const board = fullHand.filter(c => !holeCardSet.has(c));
+    if (board.length < 3) return null;
+
+    const boardRanks = new Set(board.map(c => c.slice(0, -1)));
+    const boardValues = board.map(c => this.#getRankValue(c));
+    const highestBoard = Math.max(...boardValues);
+    const lowestBoard = Math.min(...boardValues);
+
+    return this.holeCards.map(card => {
+      if (boardRanks.has(card.slice(0, -1))) return 'paired';
+      const value = this.#getRankValue(card);
+      if (value > highestBoard) return 'over';
+      if (value < lowestBoard) return 'under';
+      return 'middle';
+    });
+  }
+
+  /**
+   * Counts how many hole cards fall into each classification.
+   *
+   * @private
+   * @returns {Object} Object with 'over', 'middle', 'under' and 'paired' counts
+   */
+  #getHoleCardCounts() {
+    const counts = { over: 0, middle: 0, under: 0, paired: 0 };
+    const classifications = this.#classifyHoleCards();
+    if (classifications) {
+      for (const classification of classifications) counts[classification]++;
+    }
+    return counts;
+  }
+
+  /**
+   * Determines how the player's hole cards rank against the board and sets every overcard
+   * categorization property. Requires hole cards to have been supplied; without them all
+   * overcard properties are false.
+   *
+   * These categorizations describe the hole cards themselves, not the made hand, so they are
+   * identical across every 5-card combination of a hand and are not filtered by strict mode.
+   *
+   * Sets: isOvercard, isTwoOvercards, isOvercardAndMiddleCard, isOvercardAndUndercard,
+   * isTwoMiddleCards, isMiddleAndUndercard, isTwoUndercards.
+   *
+   * @returns {boolean} True if at least one hole card is an overcard, false otherwise
+   * @example
+   * // Board: K Q 8 3, Hand: AJ
+   * const evaluator = new HandEvaluator(['Ks', 'Qh', '8d', '3c', 'Ad', 'Jh'], true, ['Ad', 'Jh']);
+   * // isOvercard: true, isOvercardAndMiddleCard: true
+   * @example
+   * // Board: 9 7 4 2, Hand: AK (both hole cards beat every board card)
+   * const twoOvercards = new HandEvaluator(['9s', '7h', '4d', '2c', 'Ad', 'Kh'], true, ['Ad', 'Kh']);
+   * // isTwoOvercards: true
+   */
+  #isOvercards() {
+    if (this.evaluation.isOvercard !== undefined) return this.evaluation.isOvercard;
+
+    const counts = this.#getHoleCardCounts();
+
+    this.evaluation.isTwoOvercards = counts.over === 2;
+    this.evaluation.isOvercardAndMiddleCard = counts.over === 1 && counts.middle === 1;
+    this.evaluation.isOvercardAndUndercard = counts.over === 1 && counts.under === 1;
+    this.evaluation.isTwoMiddleCards = counts.middle === 2;
+    this.evaluation.isMiddleAndUndercard = counts.middle === 1 && counts.under === 1;
+    this.evaluation.isTwoUndercards = counts.under === 2;
+
+    return this.evaluation.isOvercard = counts.over > 0;
+  }
+
   /**
    * Determines if the hand is high card only (no pairs, two pair, three of a kind, full house,
    * four of a kind, flush, or straight).
@@ -1696,10 +1898,14 @@ class HandEvaluator {
  * @param {string[]} cards - Array of 5 or more card strings in format "Rs" where R is rank (A, K, Q, J, T, 9, 8, 7, 6, 5, 4, 3, 2) and s is suit (s, h, d, c)
  * @param {boolean} [strict=true] - If true, only the strongest made hand and stronger draws are marked as true.
  *   If false, all applicable hand types are marked.
+ * @param {string[]|null} [holeCards=null] - Optional array of exactly 2 cards identifying the player's hole cards.
+ *   Required for the overcard categorizations (isOvercard, isTwoOvercards, isOvercardAndMiddleCard,
+ *   isOvercardAndUndercard, isTwoMiddleCards, isMiddleAndUndercard, isTwoUndercards); without it those
+ *   properties are always false. Both cards must be present in `cards`.
  * @returns {Object} Object mapping sorted hand strings (e.g., "As, Ks, Qs, Js, Ts") to evaluation objects with boolean fields for all hand types and draws
  */
-function evaluateHand(cards, strict = true) {
-  const evaluator = new HandEvaluator(cards, strict);
+function evaluateHand(cards, strict = true, holeCards = null) {
+  const evaluator = new HandEvaluator(cards, strict, holeCards);
   return evaluator.evaluation;
 }
 

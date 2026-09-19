@@ -7,6 +7,7 @@ A comprehensive poker hand evaluation library for Node.js that evaluates poker h
 - **Comprehensive Hand Evaluation**: Evaluates all standard poker hand types (Royal Flush, Straight Flush, Four of a Kind, Full House, Flush, Straight, Three of a Kind, Two Pair, Pair, High Card)
 - **Strict Mode (Default)**: Only marks the strongest made hand and stronger draws, preventing weaker hands from being marked when stronger ones exist
 - **Detailed Categorization**: Categorizes pairs (Top, Middle, Bottom), two pairs, and three of a kind by position
+- **Overcard Categorization**: With hole cards supplied, classifies them against the board (two overcards, overcard and middle card, overcard and undercard, two middle cards, middle and undercard, two undercards)
 - **Draw Detection**: Identifies flush draws, backdoor flush draws, open-ended straight draws, and inside straight draws
 - **Key Cards and Kicker Cards**: Provides detailed card arrays showing which cards form each hand type and which are kickers
 - **Wheel Straight Support**: Handles Ace-low straights (A-2-3-4-5) correctly
@@ -55,6 +56,49 @@ const evaluation = evaluator.evaluation;
 // Non-strict mode (all applicable hands marked)
 const nonStrictEvaluator = new HandEvaluator(['As', 'Ah', 'Kd', 'Kc', 'Qs'], false);
 ```
+
+### Overcards
+
+The overcard categorizations describe your **hole cards** relative to the **board**, so the evaluator needs to know which two of the cards are yours. Pass them as the third argument:
+
+```javascript
+const { evaluateHand } = require('poker-extval');
+
+const board = ['Ks', 'Qh', '8d', '3c'];
+const holeCards = ['Ad', 'Jh'];
+
+const result = evaluateHand([...board, ...holeCards], true, holeCards);
+const evaluation = result[Object.keys(result)[0]];
+
+evaluation.isOvercard;                // true  (the ace beats every board card)
+evaluation.isOvercardAndMiddleCard;   // true  (ace is an overcard, jack sits between 3 and K)
+evaluation.isTwoOvercards;            // false
+evaluation.keyCards.isOvercard;       // ['Ad']
+```
+
+Each hole card is classified against the board:
+
+| Classification | Meaning |
+| --- | --- |
+| Overcard | Rank is higher than every board card |
+| Middle card | Rank sits strictly between the highest and lowest board ranks |
+| Undercard | Rank is lower than every board card |
+| Paired | Rank matches a board card, so it belongs to none of the above |
+
+The two classifications combine into one (and only one) of the six categories below. If either hole card pairs the board, none of the six is true — though `isOvercard` can still be true on its own.
+
+```javascript
+// Board: K Q 8 3
+evaluateHand([...board, 'Ad', 'Kc'], true, ['Ad', 'Kc']);  // isOvercard only (the king pairs the board)
+evaluateHand([...board, 'Jd', 'Th'], true, ['Jd', 'Th']);  // isTwoMiddleCards
+evaluateHand([...board, '4d', '2h'], true, ['4d', '2h']);  // isMiddleAndUndercard (the 4 beats the 3)
+evaluateHand([...board, '2d', '2h'], true, ['2d', '2h']);  // isTwoUndercards
+```
+
+**Notes:**
+- Hole cards are optional. Without them every overcard property is `false`.
+- Both hole cards must appear in the `cards` array, but they do **not** have to appear in the 5-card combination being evaluated — the classification is a property of the whole hand and is identical across every combination.
+- These categorizations describe the hole cards, not the made hand, so **strict mode does not filter them**. A hand that flops a straight with A-J on a K-Q-T-3 board reports both `isStraight` and `isOvercardAndMiddleCard`.
 
 ### Strict Mode
 
@@ -146,6 +190,19 @@ The `evaluateHand()` function returns an object where:
 - `isMiddleThreeOfAKind` - Three of a kind is neither highest nor lowest
 - `isBottomThreeOfAKind` - Three of a kind is the lowest rank
 
+#### Overcard Categorization (requires `holeCards`; not filtered by strict mode)
+- `isOvercard` - At least one hole card ranks above every board card
+- `isTwoOvercards` - Both hole cards rank above every board card
+- `isOvercardAndMiddleCard` - One overcard, one middle card
+- `isOvercardAndUndercard` - One overcard, one undercard
+- `isTwoMiddleCards` - Both hole cards sit strictly between the highest and lowest board ranks
+- `isMiddleAndUndercard` - One middle card, one undercard
+- `isTwoUndercards` - Both hole cards rank below every board card
+
+#### Other Categorization
+- `isUnderPair` - Pocket pair ranked below every other card in the hand (requires 6+ cards)
+- `isComboDraw` - Both a flush draw (not backdoor) and a straight draw
+
 #### Draws
 - `isFlushDraw` - Four cards of the same suit (one away from flush)
 - `isBackdoorFlushDraw` - Three cards of the same suit (two away from flush)
@@ -161,6 +218,8 @@ The `evaluateHand()` function returns an object where:
 #### Card Arrays
 - `keyCards` - Object with keys for each hand type/draw, values are arrays of cards (sorted) that constitute that specific hand type or draw. False hand types have empty arrays `[]`.
 - `kickerCards` - Object with keys for each hand type/draw, values are arrays of cards (sorted) that don't constitute that specific hand type or draw. False hand types have empty arrays `[]`, except `isHighCard` which contains all 5 cards when true.
+
+**Note**: For the overcard categorizations, `keyCards` holds the qualifying hole cards and `kickerCards` holds the remaining cards of the **full hand** (the board, plus any hole card that is not a key card) rather than the remaining cards of the 5-card combination.
 
 **Note**: Each hand type has its own `keyCards` and `kickerCards` entries. For example, a hand with both a pair and a flush draw will have separate entries in `keyCards.isPair`, `keyCards.isFlushDraw`, `kickerCards.isPair`, and `kickerCards.isFlushDraw`.
 
@@ -352,6 +411,7 @@ The evaluator validates input and throws descriptive errors for:
 - Invalid rank (not A, K, Q, J, T, 9-2)
 - Invalid suit (not s, h, d, c)
 - Duplicate cards
+- Hole cards that are not an array of exactly 2 distinct cards drawn from `cards`
 
 Example:
 ```javascript
@@ -370,23 +430,25 @@ Run the test suite:
 npm test
 ```
 
-The test suite includes 572+ tests covering:
+The test suite includes 700+ tests covering:
 - All hand types
 - Edge cases
 - Invalid input handling
 - Wheel straights
 - Draw detection
 - Categorization logic
+- Overcard categorization and hole card validation
 
 ## API Reference
 
-### `evaluateHand(cards, strict)`
+### `evaluateHand(cards, strict, holeCards)`
 
 Main function to evaluate poker hands.
 
 **Parameters:**
 - `cards` (string[]): Array of 5 or more card strings
 - `strict` (boolean, optional): If `true`, only the strongest made hand and stronger draws are marked. If `false`, all applicable hand types are marked (default: `true`).
+- `holeCards` (string[] | null, optional): Exactly 2 cards identifying the player's hole cards, both of which must appear in `cards`. Required for the overcard categorizations; without it those properties are always `false` (default: `null`).
 
 **Returns:**
 - Object mapping sorted hand strings to evaluation objects
@@ -399,7 +461,7 @@ Main function to evaluate poker hands.
 #### Constructor
 
 ```javascript
-new HandEvaluator(cards, strict)
+new HandEvaluator(cards, strict, holeCards)
 ```
 
 Creates a new HandEvaluator instance.
@@ -407,11 +469,13 @@ Creates a new HandEvaluator instance.
 **Parameters:**
 - `cards` (string[]): Array of 5 or more card strings
 - `strict` (boolean, optional): If `true`, only the strongest made hand and stronger draws are marked. If `false`, all applicable hand types are marked (default: `true`).
+- `holeCards` (string[] | null, optional): Exactly 2 cards identifying the player's hole cards, both of which must appear in `cards`. Required for the overcard categorizations (default: `null`).
 
 **Properties:**
 - `evaluation` - Object mapping sorted hand strings to evaluation objects (same format as `evaluateHand()` return value)
 - `cards` - Array of input cards
 - `strict` - Boolean indicating whether strict mode is enabled
+- `holeCards` - Array of the 2 hole cards, or `null` if none were supplied
 
 **Note**: All internal methods are private. Use the `evaluation` property to access evaluation results.
 
