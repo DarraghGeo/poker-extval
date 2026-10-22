@@ -1,6 +1,11 @@
 name: Publish to npm
 
-# Publishes the package whenever main receives a push with a version that is not yet on npm.
+# Publishes the package on every push to main, bumping the version as part of the release.
+# - If the version in package.json is not on npm yet (e.g. a manual minor/major bump), it is published as is.
+# - Otherwise the patch version is bumped and committed back to main, then published.
+# Each release is tagged v<version>. Commits pushed by this workflow use GITHUB_TOKEN, so they
+# do not trigger it again.
+#
 # Authenticates with npm trusted publishing (OIDC), so no NPM_TOKEN secret is needed.
 # The npm trusted publisher for this package must point at DarraghGeo/poker-extval and this
 # workflow filename (publish.yml), with no environment.
@@ -10,7 +15,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write # push the version bump commit and release tag
   id-token: write # required for npm trusted publishing
 
 concurrency:
@@ -35,19 +40,34 @@ jobs:
 
       - run: npm test
 
-      - name: Check whether this version is already published
-        id: check
+      - name: Bump version if already published
+        id: version
         run: |
           NAME=$(node -p "require('./package.json').name")
           VERSION=$(node -p "require('./package.json').version")
           if npm view "$NAME@$VERSION" version > /dev/null 2>&1; then
-            echo "$NAME@$VERSION is already on npm; skipping publish."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
+            VERSION=$(npm version patch --no-git-tag-version | sed 's/^v//')
+            echo "Bumped to $VERSION."
+            echo "bumped=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Publishing $NAME@$VERSION."
-            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "$NAME@$VERSION is not on npm yet; publishing as is."
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
           fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Publish
-        if: steps.check.outputs.publish == 'true'
-        run: npm publish
+      # Push the bump before publishing: if publishing then fails, main already holds an
+      # unpublished version and the next run publishes it instead of bumping again.
+      - name: Commit version bump and tag release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUMPED: ${{ steps.version.outputs.bumped }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ "$BUMPED" = "true" ]; then
+            git commit -am "v$VERSION [skip ci]"
+          fi
+          git tag "v$VERSION"
+          git push origin HEAD:main "v$VERSION"
+
+      - run: npm publish
