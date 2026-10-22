@@ -954,7 +954,8 @@ class HandEvaluator {
 
   /**
    * Determines if the hand has four cards of the same suit (one card away from a flush).
-   * Returns false if the hand is already a flush.
+   * Returns false if the hand is already a flush. When hole cards are supplied, at least one
+   * of the four suited cards must be a hole card.
    * 
    * @returns {boolean} True if the hand is a flush draw, false otherwise
    * @example
@@ -966,12 +967,13 @@ class HandEvaluator {
     if (this.evaluation.isFlush === undefined) this.#isFlush();
     if (this.evaluation.isFlush) return this.evaluation.isFlushDraw = false;
     const suits = this.#countSuits();
-    return this.evaluation.isFlushDraw = Object.values(suits).some(count => count === 4);
+    return this.evaluation.isFlushDraw = Object.keys(suits).some(s => suits[s] === 4 && this.#usesHoleCard(this.#getCardsOfSuit(s)));
   }
 
   /**
    * Determines if the hand has three cards of the same suit (two cards away from a flush).
-   * Returns false if the hand is already a flush or flush draw.
+   * Returns false if the hand is already a flush or flush draw. When hole cards are supplied,
+   * at least one of the three suited cards must be a hole card.
    * 
    * @returns {boolean} True if the hand is a backdoor flush draw, false otherwise
    * @example
@@ -984,7 +986,7 @@ class HandEvaluator {
     if (this.evaluation.isFlushDraw === undefined) this.#isFlushDraw();
     if (this.evaluation.isFlush || this.evaluation.isFlushDraw) return this.evaluation.isBackdoorFlushDraw = false;
     const suits = this.#countSuits();
-    return this.evaluation.isBackdoorFlushDraw = Object.values(suits).some(count => count === 3);
+    return this.evaluation.isBackdoorFlushDraw = Object.keys(suits).some(s => suits[s] === 3 && this.#usesHoleCard(this.#getCardsOfSuit(s)));
   }
 
   // ==================== STRAIGHT EVALUATION ====================
@@ -1080,6 +1082,7 @@ class HandEvaluator {
   /**
    * Determines if the hand is an open-ended straight draw (one card away from a straight on either end).
    * Checks both standard and wheel-equivalent open-ended draws.
+   * When hole cards are supplied, the four drawing cards must include at least one hole card.
    * Returns false if the hand already contains pairs, two pair, three of a kind, full house, four of a kind, or a straight.
    * 
    * @returns {boolean} True if the hand is an open-ended straight draw, false otherwise
@@ -1100,8 +1103,7 @@ class HandEvaluator {
       if (this.#isOpenEndedStraightDrawWheel()) return this.evaluation.isOpenEndedStraightDraw = true;
       return this.evaluation.isOpenEndedStraightDraw = false;
     }
-    this.#sort();
-    const result = this.#getDistance(this.cards.slice(0,4)) === 3 || this.#getDistance(this.cards.slice(1,5)) === 3;
+    const result = this.#findStraightDrawWindow([3], false) !== null;
     if (result) return this.evaluation.isOpenEndedStraightDraw = true;
     // Check wheel equivalent
     if (this.#isOpenEndedStraightDrawWheel()) return this.evaluation.isOpenEndedStraightDraw = true;
@@ -1124,13 +1126,13 @@ class HandEvaluator {
     if (this.evaluation.isFourOfAKind === undefined) this.#isFourOfAKind();
     if (this.evaluation.isStraightWheel === undefined) this.#isStraightWheel();
     if (this.evaluation.isPair || this.evaluation.isTwoPair || this.evaluation.isThreeOfAKind || this.evaluation.isFullHouse || this.evaluation.isFourOfAKind || this.evaluation.isStraightWheel) return this.evaluation.isOpenEndedStraightDrawWheel = false;
-    this.#sortWheel();
-    return this.evaluation.isOpenEndedStraightDrawWheel = this.#getDistanceWheel(this.cards.slice(0,4)) === 3 || this.#getDistanceWheel(this.cards.slice(1,5)) === 3;
+    return this.evaluation.isOpenEndedStraightDrawWheel = this.#findStraightDrawWindow([3], true) !== null;
   }
 
   /**
    * Determines if the hand is an inside straight draw (one card away from a straight, but the needed card is in the middle).
    * Checks both standard and wheel-equivalent inside draws.
+   * When hole cards are supplied, the four drawing cards must include at least one hole card.
    * Returns false if the hand already contains pairs, two pair, three of a kind, full house, four of a kind, or a straight.
    * 
    * @returns {boolean} True if the hand is an inside straight draw, false otherwise
@@ -1152,8 +1154,7 @@ class HandEvaluator {
       return this.evaluation.isInsideStraightDraw = false;
     }
 
-    this.#sort();
-    const result = this.#getDistance(this.cards.slice(0,4)) === 4 || this.#getDistance(this.cards.slice(1,5)) === 4;
+    const result = this.#findStraightDrawWindow([4], false) !== null;
     if (result) return this.evaluation.isInsideStraightDraw = true;
     // Check wheel equivalent
     if (this.#isInsideStraightDrawWheel()) return this.evaluation.isInsideStraightDraw = true;
@@ -1177,8 +1178,7 @@ class HandEvaluator {
     if (this.evaluation.isStraightWheel === undefined) this.#isStraightWheel();
     if (this.evaluation.isPair || this.evaluation.isTwoPair || this.evaluation.isThreeOfAKind || this.evaluation.isFullHouse || this.evaluation.isFourOfAKind || this.evaluation.isStraightWheel) return this.evaluation.isInsideStraightDrawWheel = false;
 
-    this.#sortWheel();
-    return this.evaluation.isInsideStraightDrawWheel = this.#getDistanceWheel(this.cards.slice(0,4)) === 4 || this.#getDistanceWheel(this.cards.slice(1,5)) === 4;
+    return this.evaluation.isInsideStraightDrawWheel = this.#findStraightDrawWindow([4], true) !== null;
   }
 
   /**
@@ -1454,8 +1454,7 @@ class HandEvaluator {
     if (!this.evaluation.isFlushDraw) return [];
     const suits = this.#countSuits();
     const flushSuit = Object.keys(suits).find(s => suits[s] === 4);
-    return this.cards.filter(c => c.slice(-1) === flushSuit)
-      .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    return this.#getCardsOfSuit(flushSuit);
   }
 
   /**
@@ -1468,8 +1467,7 @@ class HandEvaluator {
     if (!this.evaluation.isBackdoorFlushDraw) return [];
     const suits = this.#countSuits();
     const flushSuit = Object.keys(suits).find(s => suits[s] === 3);
-    return this.cards.filter(c => c.slice(-1) === flushSuit)
-      .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    return this.#getCardsOfSuit(flushSuit);
   }
 
   /**
@@ -1480,7 +1478,7 @@ class HandEvaluator {
    */
   #getKeyCardsForOpenEndedStraightDraw() {
     if (!this.evaluation.isOpenEndedStraightDraw) return [];
-    return this.#getStraightDrawCards();
+    return this.#getStraightDrawCards([3]);
   }
 
   /**
@@ -1491,7 +1489,7 @@ class HandEvaluator {
    */
   #getKeyCardsForInsideStraightDraw() {
     if (!this.evaluation.isInsideStraightDraw) return [];
-    return this.#getStraightDrawCards();
+    return this.#getStraightDrawCards([4]);
   }
 
   /**
@@ -1577,7 +1575,7 @@ class HandEvaluator {
    */
   #getKeyCardsForOpenEndedStraightDrawWheel() {
     if (!this.evaluation.isOpenEndedStraightDrawWheel) return [];
-    return this.#getStraightDrawCards();
+    return this.#getStraightDrawCards([3]);
   }
 
   /**
@@ -1588,7 +1586,7 @@ class HandEvaluator {
    */
   #getKeyCardsForInsideStraightDrawWheel() {
     if (!this.evaluation.isInsideStraightDrawWheel) return [];
-    return this.#getStraightDrawCards();
+    return this.#getStraightDrawCards([4]);
   }
 
   /**
@@ -1685,41 +1683,64 @@ class HandEvaluator {
 
   /**
    * Helper method to extract the 4 cards that form a straight draw.
-   * Handles both standard and wheel straight draws.
+   * Handles both standard and wheel straight draws, preferring a standard draw.
+   * When hole cards are supplied, only draws that use at least one hole card are returned.
    * 
    * @private
+   * @param {number[]} [distances=[3, 4]] - Accepted rank spans for the 4 drawing cards
+   *   (3 = open-ended, 4 = inside)
    * @returns {string[]} Array of 4 cards forming the draw, sorted from highest to lowest
    */
-  #getStraightDrawCards() {
-    // Try standard straight draw
-    this.#sort();
-    const firstFour = this.cards.slice(0, 4);
-    const lastFour = this.cards.slice(1, 5);
-    
-    const firstFourDist = this.#getDistance(firstFour);
-    if (firstFourDist === 3 || firstFourDist === 4) {
-      return [...firstFour].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+  #getStraightDrawCards(distances = [3, 4]) {
+    return this.#findStraightDrawWindow(distances, false) || this.#findStraightDrawWindow(distances, true) || [];
+  }
+
+  /**
+   * Finds 4 rank-adjacent cards (the highest four or the lowest four) whose rank span is one of
+   * the given distances. When hole cards are supplied, a window made only of board cards is
+   * skipped, since a draw the board gives every player is not the player's draw.
+   * 
+   * @private
+   * @param {number[]} distances - Accepted rank spans for the 4 cards (3 = open-ended, 4 = inside)
+   * @param {boolean} wheel - If true, ranks the Ace low (for wheel draws)
+   * @returns {string[]|null} Array of 4 cards sorted from highest to lowest, or null if none match
+   */
+  #findStraightDrawWindow(distances, wheel) {
+    const rankValue = wheel ? c => this.#getRankValueWheel(c) : c => this.#getRankValue(c);
+    if (wheel) this.#sortWheel(); else this.#sort();
+    for (const window of [this.cards.slice(0, 4), this.cards.slice(1, 5)]) {
+      const distance = wheel ? this.#getDistanceWheel(window) : this.#getDistance(window);
+      if (distances.includes(distance) && this.#usesHoleCard(window)) {
+        return [...window].sort((a, b) => rankValue(b) - rankValue(a));
+      }
     }
-    const lastFourDist = this.#getDistance(lastFour);
-    if (lastFourDist === 3 || lastFourDist === 4) {
-      return [...lastFour].sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
-    }
-    
-    // Try wheel straight draw
-    this.#sortWheel();
-    const firstFourWheel = this.cards.slice(0, 4);
-    const lastFourWheel = this.cards.slice(1, 5);
-    
-    const firstFourDistWheel = this.#getDistanceWheel(firstFourWheel);
-    if (firstFourDistWheel === 3 || firstFourDistWheel === 4) {
-      return [...firstFourWheel].sort((a, b) => this.#getRankValueWheel(b) - this.#getRankValueWheel(a));
-    }
-    const lastFourDistWheel = this.#getDistanceWheel(lastFourWheel);
-    if (lastFourDistWheel === 3 || lastFourDistWheel === 4) {
-      return [...lastFourWheel].sort((a, b) => this.#getRankValueWheel(b) - this.#getRankValueWheel(a));
-    }
-    
-    return [];
+    return null;
+  }
+
+  /**
+   * Gets the cards of a given suit in the hand, sorted from highest to lowest rank.
+   * 
+   * @private
+   * @param {string} suit - Suit character (s, h, d, c)
+   * @returns {string[]} Cards of that suit
+   */
+  #getCardsOfSuit(suit) {
+    return this.cards.filter(c => c.slice(-1) === suit)
+      .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+  }
+
+  /**
+   * Determines whether a draw's cards include at least one of the player's hole cards.
+   * A draw made entirely of board cards is shared by every player, so when hole cards are
+   * supplied it does not count as the player's draw. Without hole cards every draw qualifies.
+   * 
+   * @private
+   * @param {string[]} cards - The cards forming the draw
+   * @returns {boolean} True if no hole cards were supplied or a hole card is among the cards
+   */
+  #usesHoleCard(cards) {
+    if (!this.holeCards) return true;
+    return cards.some(c => this.holeCards.includes(c));
   }
 
   // ==================== HIGH CARD ====================

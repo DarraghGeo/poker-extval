@@ -2847,3 +2847,103 @@ describe('Overcards', () => {
     });
   });
 });
+
+/**
+ * Evaluates a board plus hole cards in non-strict mode and returns every 5-card combination's evaluation.
+ * Draws are reported per combination, so these tests look across all combinations.
+ */
+function evaluateAllCombinationsWithHoleCards(board, holeCards) {
+  return Object.values(evaluateHand([...board, ...holeCards], false, holeCards));
+}
+
+function anyCombinationHas(board, holeCards, property) {
+  return evaluateAllCombinationsWithHoleCards(board, holeCards).some(evaluation => evaluation[property]);
+}
+
+describe('Draws must use a hole card', () => {
+  describe('Straight draws', () => {
+    test('should not flag an open-ended draw made entirely by the board', () => {
+      // Board: 9♥ 8♠ 7♦ 6♣, Hand: 22 - the 9876 is the board's draw, not the player's
+      const board = ['9h', '8s', '7d', '6c'];
+      const holeCards = ['2c', '2d'];
+
+      expect(anyCombinationHas(board, holeCards, 'isOpenEndedStraightDraw')).toBe(false);
+      expect(anyCombinationHas(board, holeCards, 'isInsideStraightDraw')).toBe(false);
+      expect(anyCombinationHas(board, holeCards, 'isStraightDraw')).toBe(false);
+    });
+
+    test('should still flag a board-only straight draw when hole cards are omitted', () => {
+      const result = evaluateHand(['9h', '8s', '7d', '6c', '2c', '2d'], false);
+
+      expect(Object.values(result).some(evaluation => evaluation.isOpenEndedStraightDraw)).toBe(true);
+    });
+
+    test('should flag an open-ended draw completed by a hole card', () => {
+      // Board: 9♠ 7♦ 6♣ 2♥, Hand: 8♥ 5♣ - the 8 makes 9876
+      expect(anyCombinationHas(['9s', '7d', '6c', '2h'], ['8h', '5c'], 'isOpenEndedStraightDraw')).toBe(true);
+    });
+
+    test('should flag only the gutshot when the hole card extends a board open-ender to an inside draw', () => {
+      // Board: T♠ 9♥ 8♦ 7♣, Hand: 5♣ 2♦ - T987 is the board's; 9875 (needs a 6) uses the 5
+      const board = ['Ts', '9h', '8d', '7c'];
+      const holeCards = ['5c', '2d'];
+
+      expect(anyCombinationHas(board, holeCards, 'isOpenEndedStraightDraw')).toBe(false);
+      expect(anyCombinationHas(board, holeCards, 'isInsideStraightDraw')).toBe(true);
+    });
+
+    test('should report straight draw key cards that include a hole card', () => {
+      const holeCards = ['5c', '2d'];
+      const drawing = evaluateAllCombinationsWithHoleCards(['Ts', '9h', '8d', '7c'], holeCards)
+        .filter(evaluation => evaluation.isInsideStraightDraw);
+
+      expect(drawing.length).toBeGreaterThan(0);
+      for (const evaluation of drawing) {
+        expect(evaluation.keyCards.isInsideStraightDraw).toEqual(['9h', '8d', '7c', '5c']);
+      }
+    });
+  });
+
+  describe('Flush draws', () => {
+    test('should not flag a backdoor flush draw made entirely by a three-suited flop', () => {
+      // Board: K♠ 7♠ 2♠, Hand: A♦ Q♦
+      expect(anyCombinationHas(['Ks', '7s', '2s'], ['Ad', 'Qd'], 'isBackdoorFlushDraw')).toBe(false);
+    });
+
+    test('should still flag a board-only backdoor flush draw when hole cards are omitted', () => {
+      const result = evaluateHand(['Ks', '7s', '2s', 'Ad', 'Qd'], false);
+
+      expect(Object.values(result)[0].isBackdoorFlushDraw).toBe(true);
+    });
+
+    test('should flag a backdoor flush draw that uses the hole cards', () => {
+      // Board: K♦ 7♠ 2♠, Hand: A♦ Q♦
+      expect(anyCombinationHas(['Kd', '7s', '2s'], ['Ad', 'Qd'], 'isBackdoorFlushDraw')).toBe(true);
+    });
+
+    test('should not flag a flush draw made entirely by a four-suited board', () => {
+      // Board: A♠ K♠ 7♠ 2♠, Hand: 9♥ 4♦
+      expect(anyCombinationHas(['As', 'Ks', '7s', '2s'], ['9h', '4d'], 'isFlushDraw')).toBe(false);
+    });
+
+    test('should flag a flush draw that uses one hole card', () => {
+      // Board: K♠ 7♠ 2♠, Hand: Q♠ 4♦
+      const evaluation = evaluateWithHoleCards(['Ks', '7s', '2s'], ['Qs', '4d']);
+
+      expect(evaluation.isFlushDraw).toBe(true);
+      expect(evaluation.keyCards.isFlushDraw).toEqual(['Ks', 'Qs', '7s', '2s']);
+    });
+  });
+
+  describe('Combo draws', () => {
+    test('should not flag a combo draw made entirely by the board', () => {
+      // Board: 9♠ 8♠ 7♠ 6♠, Hand: K♥ 2♦
+      expect(anyCombinationHas(['9s', '8s', '7s', '6s'], ['Kh', '2d'], 'isComboDraw')).toBe(false);
+    });
+
+    test('should flag a combo draw that uses the hole cards', () => {
+      // Board: 9♠ 8♠ 7♥ 2♣, Hand: K♠ 5♠ - four spades plus 9875
+      expect(anyCombinationHas(['9s', '8s', '7h', '2c'], ['Ks', '5s'], 'isComboDraw')).toBe(true);
+    });
+  });
+});

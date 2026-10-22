@@ -97,6 +97,7 @@ evaluateHand([...board, '2d', '2h'], true, ['2d', '2h']);  // isTwoUndercards
 
 **Notes:**
 - Hole cards are optional. Without them every overcard property is `false`.
+- Supplying hole cards also restricts draws to those that use at least one hole card (see [Draws](#draws)).
 - Both hole cards must appear in the `cards` array, but they do **not** have to appear in the 5-card combination being evaluated — the classification is a property of the whole hand and is identical across every combination.
 - These categorizations describe the hole cards, not the made hand, so **strict mode does not filter them**. A hand that flops a straight with A-J on a K-Q-T-3 board reports both `isStraight` and `isOvercardAndMiddleCard`.
 
@@ -209,6 +210,8 @@ The `evaluateHand()` function returns an object where:
 - `isOpenEndedStraightDraw` - One card away from straight on either end
 - `isInsideStraightDraw` - One card away from straight (needed card in middle)
 - `isStraightDraw` - Any type of straight draw (open-ended or inside, standard or wheel)
+
+**Note**: When `holeCards` are supplied, every draw (including `isComboDraw` and the wheel draws) must use at least one hole card. A draw made entirely of board cards is shared by every player, so it is not reported: 2-2 on a 9-8-7-6 board is not an open-ended straight draw, and A♦-Q♦ on a K♠-7♠-2♠ flop is not a backdoor flush draw. Without `holeCards` the evaluator cannot tell the board from the hand, so draws are detected from all cards.
 
 #### Wheel Straight Support
 - `isStraightWheel` - Wheel straight (A-2-3-4-5)
