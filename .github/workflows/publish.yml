@@ -13,6 +13,7 @@ name: Publish to npm
 on:
   push:
     branches: [main]
+  workflow_dispatch: # allows a manual run from the Actions tab if a push did not trigger one
 
 permissions:
   contents: write # push the version bump commit and release tag
