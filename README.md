@@ -482,6 +482,10 @@ Creates a new HandEvaluator instance.
 
 **Note**: All internal methods are private. Use the `evaluation` property to access evaluation results.
 
+## Releasing
+
+Pushing to `main` publishes to npm via GitHub Actions (`.github/workflows/publish.yml`), using npm trusted publishing so no token is stored. The workflow runs the tests and publishes only when the `version` in `package.json` is not already on npm, so bump it (`npm version patch|minor|major --no-git-tag-version`) in any change that should be released. Pushes that keep the version unchanged run the tests and skip publishing.
+
 ## License
 
 MIT License
