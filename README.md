@@ -201,14 +201,14 @@ The `evaluateHand()` function returns an object where:
 - `isTwoUndercards` - Both hole cards rank below every board card
 
 #### Other Categorization
-- `isUnderPair` - Pocket pair ranked below every other card in the hand (requires 6+ cards)
+- `isUnderPair` - Pocket pair ranked below every board card. With `holeCards` this works on any street, including the flop; without them the board is unknown, so it requires 6+ cards and means a pair ranked below every other card
 - `isComboDraw` - Both a flush draw (not backdoor) and a straight draw
 
 #### Draws
 - `isFlushDraw` - Four cards of the same suit (one away from flush)
 - `isBackdoorFlushDraw` - Three cards of the same suit (two away from flush)
-- `isOpenEndedStraightDraw` - One card away from straight on either end
-- `isInsideStraightDraw` - One card away from straight (needed card in middle)
+- `isOpenEndedStraightDraw` - Four in a row that a card at either end completes (e.g. 9-8-7-6). A-K-Q-J and A-2-3-4 complete at one end only, so they count as inside draws
+- `isInsideStraightDraw` - One card away from a straight that only one rank completes (a gap in the middle, or A-K-Q-J / A-2-3-4)
 - `isStraightDraw` - Any type of straight draw (open-ended or inside, standard or wheel)
 
 **Note**: When `holeCards` are supplied, every draw (including `isComboDraw` and the wheel draws) must use at least one hole card. A draw made entirely of board cards is shared by every player, so it is not reported: 2-2 on a 9-8-7-6 board is not an open-ended straight draw, and A♦-Q♦ on a K♠-7♠-2♠ flop is not a backdoor flush draw. Without `holeCards` the evaluator cannot tell the board from the hand, so draws are detected from all cards.

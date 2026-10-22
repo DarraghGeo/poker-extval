@@ -65,7 +65,8 @@ class HandEvaluator {
    */
   constructor(cards, strict = true, holeCards = null, originalCards = null) {
     this.#validateCards(cards);
-    this.cards = cards;
+    // Copy so that in-place sorting during evaluation never reorders the caller's array
+    this.cards = [...cards];
     this.strict = strict;
     this.originalCards = originalCards || (cards.length > 5 ? cards : null);
     if (holeCards === null || holeCards === undefined) {
@@ -370,11 +371,13 @@ class HandEvaluator {
   }
 
   /**
-   * Gets sorted key card ranks for an evaluation.
+   * Gets key card ranks for an evaluation, in tiebreak order.
+   * Ranks are grouped by how often they appear (so a full house compares its three of a kind
+   * before its pair), then sorted descending. In a wheel straight (A-2-3-4-5) the Ace counts low.
    * 
    * @private
    * @param {Object} evaluation - The evaluation object
-   * @returns {number[]} Array of rank values sorted descending
+   * @returns {number[]} Array of rank values in tiebreak order
    */
   #getKeyCardRanks(evaluation) {
     const handStrength = {
@@ -384,8 +387,11 @@ class HandEvaluator {
     };
     for (const [hand] of Object.entries(handStrength)) {
       if (evaluation[hand]) {
-        const keyCards = evaluation.keyCards[hand] || [];
-        return keyCards.map(c => this.#getRankValue(c)).sort((a, b) => b - a);
+        const ranks = (evaluation.keyCards[hand] || []).map(c => this.#getRankValue(c));
+        const isWheel = (hand === 'isStraight' || hand === 'isStraightFlush') && ranks.includes(13) && ranks.includes(4);
+        const values = isWheel ? ranks.map(r => r === 13 ? 0 : r) : ranks;
+        const counts = values.reduce((acc, r) => (acc[r] = (acc[r] || 0) + 1, acc), {});
+        return values.sort((a, b) => counts[b] - counts[a] || b - a);
       }
     }
     return [];
@@ -457,7 +463,7 @@ class HandEvaluator {
     for (const [key, evaluation] of Object.entries(result)) {
       const strength = this.#getHandStrength(evaluation);
       const bestStrength = bestEval ? this.#getHandStrength(bestEval) : 0;
-      if (!bestEval || strength > bestStrength || (strength === bestStrength && this.#compareEvaluations(evaluation, bestEval) > 0)) {
+      if (!bestEval || strength > bestStrength || (strength === bestStrength && this.#compareEvaluations(evaluation, bestEval) < 0)) {
         bestKey = key;
         bestEval = evaluation;
       }
@@ -1088,8 +1094,8 @@ class HandEvaluator {
    * 
    * @returns {boolean} True if the hand is an open-ended straight draw, false otherwise
    * @example
-   * const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', '9h']);
-   * evaluator.isOpenEndedStraightDraw(); // Returns true (needs T or 9 to complete straight)
+   * const evaluator = new HandEvaluator(['Ks', 'Qs', 'Js', 'Ts', '4h']);
+   * evaluator.isOpenEndedStraightDraw(); // Returns true (needs A or 9 to complete straight)
    */
   #isOpenEndedStraightDraw() {
     if (this.evaluation.isOpenEndedStraightDraw !== undefined) return this.evaluation.isOpenEndedStraightDraw;
@@ -1113,7 +1119,7 @@ class HandEvaluator {
 
   /**
    * Determines if the hand is an open-ended straight draw using wheel ranking.
-   * Checks for wheel-equivalent open-ended draws (e.g., A-2-3-4 needs 5 or 2).
+   * Checks for wheel-equivalent open-ended draws. A-2-3-4 needs only a 5, so it counts as an inside draw.
    * Paired cards count once. Returns false if the hand is already a wheel straight.
    * 
    * @returns {boolean} True if the hand is a wheel-equivalent open-ended straight draw, false otherwise
@@ -1700,7 +1706,9 @@ class HandEvaluator {
   /**
    * Finds 4 cards of distinct, rank-adjacent ranks whose rank span is one of the given distances.
    * Paired cards count once (a hole card is preferred as the representative of its rank), so a
-   * paired hand such as 8-8-6-5-4 still finds its 8-6-5-4 draw. When hole cards are supplied, a
+   * paired hand such as 8-8-6-5-4 still finds its 8-6-5-4 draw. One-ended draws (A-K-Q-J and
+   * A-2-3-4) count as inside draws, since only one rank completes them. Wheel windows must
+   * contain the Ace. When hole cards are supplied, a
    * window whose ranks are all already on the board is skipped, since a draw the board gives
    * every player is not the player's draw.
    * 
@@ -1723,7 +1731,12 @@ class HandEvaluator {
     }
     for (let i = 0; i + 4 <= distinct.length; i++) {
       const window = distinct.slice(i, i + 4);
-      const distance = rankValue(window[0]) - rankValue(window[3]);
+      // Wheel ranking only matters when the Ace plays low; other windows are standard draws
+      if (wheel && !window.some(c => c.startsWith('A'))) continue;
+      let distance = rankValue(window[0]) - rankValue(window[3]);
+      // Four in a row capped by the Ace (A-K-Q-J or A-2-3-4) completes at one end only,
+      // so it has the same 4 outs as an inside draw
+      if (distance === 3 && window.some(c => c.startsWith('A'))) distance = 4;
       if (distances.includes(distance) && this.#addsRankToBoard(window)) return window;
     }
     return null;
@@ -1795,7 +1808,9 @@ class HandEvaluator {
 
   /**
    * Determines if the hand contains an under pair (pocket pair smaller than all board cards).
-   * Only applicable when evaluating 6+ cards where the pair rank is smaller than all other cards.
+   * With hole cards supplied, the hole cards must be a pocket pair ranked below every board card;
+   * this works on any street, including a 5-card flop. Without hole cards the board is unknown, so
+   * it applies only to 6+ cards where the pair rank is smaller than all other cards.
    * 
    * @returns {boolean} True if the hand is an under pair, false otherwise
    * @example
@@ -1806,6 +1821,13 @@ class HandEvaluator {
   #isUnderPair() {
     if (this.evaluation.isUnderPair !== undefined) return this.evaluation.isUnderPair;
     if (this.evaluation.isPair === undefined) this.#isPair();
+    if (this.evaluation.isPair && this.holeCards) {
+      const [first, second] = this.holeCards;
+      const holeRank = first.slice(0, -1);
+      if (second.slice(0, -1) !== holeRank || this.#getPairRank() !== holeRank) return this.evaluation.isUnderPair = false;
+      const board = (this.originalCards || this.cards).filter(c => !this.holeCards.includes(c));
+      return this.evaluation.isUnderPair = board.every(c => this.#getRankValue(c) > this.#getRankValue(first));
+    }
     if (!this.evaluation.isPair || !this.originalCards || this.originalCards.length < 6) {
       return this.evaluation.isUnderPair = false;
     }

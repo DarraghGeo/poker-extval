@@ -3007,3 +3007,131 @@ describe('Straight draws in paired hands', () => {
     expect(evaluation.isStraightDraw).toBe(true);
   });
 });
+
+describe('Strict mode keeps the best five-card hand', () => {
+  const bestKey = cards => Object.keys(evaluateHand(cards))[0];
+
+  test('should keep the highest kicker with a pair', () => {
+    expect(bestKey(['Kd', '8c', '3h', '2d', 'As', 'Kh'])).toBe('As, Kd, Kh, 8c, 3h');
+  });
+
+  test('should keep the two highest pairs from three pairs', () => {
+    expect(bestKey(['Ad', 'Ac', 'Kh', 'Kd', 'Qs', 'Qc', '2h'])).toBe('Ad, Ac, Kh, Kd, Qs');
+  });
+
+  test('should keep the five highest cards with no made hand', () => {
+    expect(bestKey(['Ad', 'Kc', '9h', '7d', '5s', '3c', '2h'])).toBe('Ad, Kc, 9h, 7d, 5s');
+  });
+
+  test('should keep the highest straight', () => {
+    expect(bestKey(['2d', '3c', '4h', '5d', '6s', '7c', '8h'])).toBe('8h, 7c, 6s, 5d, 4h');
+  });
+
+  test('should rank a six-high straight above the wheel', () => {
+    expect(bestKey(['2c', '3d', '4h', '5s', '6c', 'Ad', '9h'])).toBe('6c, 5s, 4h, 3d, 2c');
+  });
+
+  test('should keep the highest flush', () => {
+    expect(bestKey(['As', 'Ks', '2s', '3s', '9d', '7s', '4s'])).toBe('As, Ks, 7s, 4s, 3s');
+  });
+
+  test('should match a reference evaluator on random hands', () => {
+    const ranks = '23456789TJQKA';
+    const deck = [];
+    for (const r of ranks) for (const s of 'shdc') deck.push(r + s);
+    const value = c => ranks.indexOf(c[0]) + 2;
+    // Reference score: [category, tiebreak ranks...], compared lexicographically
+    const score = cards => {
+      const values = cards.map(value).sort((a, b) => b - a);
+      const counts = {};
+      values.forEach(v => { counts[v] = (counts[v] || 0) + 1; });
+      const groups = Object.keys(counts).map(Number).sort((a, b) => counts[b] - counts[a] || b - a);
+      const shape = groups.map(g => counts[g]).join('');
+      const flush = new Set(cards.map(c => c[1])).size === 1;
+      let straightHigh = 0;
+      if (groups.length === 5 && values[0] - values[4] === 4) straightHigh = values[0];
+      if (values.join() === '14,5,4,3,2') straightHigh = 5;
+      let category = { 41: 8, 32: 7, 311: 4, 221: 3, 2111: 2 }[shape] || 1;
+      if (straightHigh && flush) category = 9;
+      else if (flush && category < 6) category = 6;
+      else if (straightHigh && category < 5) category = 5;
+      return [category, ...(straightHigh ? [straightHigh] : groups)];
+    };
+    const compare = (a, b) => {
+      for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) - (b[i] || 0);
+      }
+      return 0;
+    };
+    const combinations = (cards, size) => size === 0 ? [[]] : cards.length < size ? [] :
+      [...combinations(cards.slice(1), size - 1).map(c => [cards[0], ...c]), ...combinations(cards.slice(1), size)];
+
+    let seed = 42;
+    const random = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let i = 0; i < 1000; i++) {
+      const shuffled = [...deck].sort(() => random() - 0.5);
+      const cards = shuffled.slice(0, 5 + (i % 3));
+      const best = combinations(cards, 5).map(score).sort((a, b) => compare(b, a))[0];
+      const chosen = bestKey(cards).split(', ');
+      expect({ cards, score: score(chosen) }).toEqual({ cards, score: best });
+    }
+  });
+});
+
+describe('One-ended straight draws', () => {
+  const evaluate = cards => Object.values(evaluateHand(cards))[0];
+
+  test('should treat A-K-Q-J as an inside draw (only a T completes it)', () => {
+    const evaluation = evaluate(['As', 'Kd', 'Qc', 'Jh', '4h']);
+
+    expect(evaluation.isOpenEndedStraightDraw).toBe(false);
+    expect(evaluation.isInsideStraightDraw).toBe(true);
+    expect(evaluation.isStraightDraw).toBe(true);
+  });
+
+  test('should treat A-2-3-4 as an inside draw (only a 5 completes it)', () => {
+    const evaluation = evaluate(['As', '2d', '3c', '4h', '9h']);
+
+    expect(evaluation.isOpenEndedStraightDraw).toBe(false);
+    expect(evaluation.isInsideStraightDraw).toBe(true);
+  });
+
+  test('should keep 5-4-3-2 open-ended (an A or a 6 completes it)', () => {
+    expect(evaluate(['5s', '4h', '3d', '2c', 'Kh']).isOpenEndedStraightDraw).toBe(true);
+  });
+
+  test('should not report straight or combo draws on a made Broadway straight', () => {
+    const evaluation = evaluate(['As', 'Ks', 'Qs', 'Js', 'Tc']);
+
+    expect(evaluation.isStraight).toBe(true);
+    expect(evaluation.isOpenEndedStraightDraw).toBe(false);
+    expect(evaluation.isStraightDraw).toBe(false);
+    expect(evaluation.isComboDraw).toBe(false);
+  });
+});
+
+describe('Under pair with hole cards', () => {
+  test('should identify an under pair on the flop', () => {
+    // Board: K♦ Q♣ J♥, Hand: 2♠ 2♥
+    expect(evaluateWithHoleCards(['Kd', 'Qc', 'Jh'], ['2s', '2h']).isUnderPair).toBe(true);
+  });
+
+  test('should not treat a low board pair as an under pair', () => {
+    // Board: K♦ Q♣ 3♥ 3♠, Hand: A♦ J♥ - the 3s belong to the board
+    expect(anyCombinationHas(['Kd', 'Qc', '3h', '3s'], ['Ad', 'Jh'], 'isUnderPair')).toBe(false);
+  });
+
+  test('should not identify an under pair when the pocket pair beats a board card', () => {
+    // Board: K♦ Q♣ 4♥, Hand: 5♠ 5♥
+    expect(evaluateWithHoleCards(['Kd', 'Qc', '4h'], ['5s', '5h']).isUnderPair).toBe(false);
+  });
+});
+
+describe('Input handling', () => {
+  test('should not reorder the caller\'s card array', () => {
+    const cards = ['2c', 'Kd', '7h', 'As', '9s'];
+    evaluateHand(cards);
+
+    expect(cards).toEqual(['2c', 'Kd', '7h', 'As', '9s']);
+  });
+});
