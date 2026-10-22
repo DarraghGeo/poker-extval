@@ -213,6 +213,8 @@ The `evaluateHand()` function returns an object where:
 
 **Note**: When `holeCards` are supplied, every draw (including `isComboDraw` and the wheel draws) must use at least one hole card. A draw made entirely of board cards is shared by every player, so it is not reported: 2-2 on a 9-8-7-6 board is not an open-ended straight draw, and A♦-Q♦ on a K♠-7♠-2♠ flop is not a backdoor flush draw. Without `holeCards` the evaluator cannot tell the board from the hand, so draws are detected from all cards.
 
+**Note**: Straight draws count paired cards once, so a paired hand can still hold one: 5-4 on an 8-8-6 flop is a pair and an inside straight draw. With `holeCards`, a hole card that only pairs a board rank does not create a straight draw (9-2 on a 9-8-7-6 board has no straight draw of its own).
+
 #### Wheel Straight Support
 - `isStraightWheel` - Wheel straight (A-2-3-4-5)
 - `isOpenEndedStraightDrawWheel` - Open-ended draw using wheel ranking

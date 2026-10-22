@@ -2947,3 +2947,63 @@ describe('Draws must use a hole card', () => {
     });
   });
 });
+
+describe('Straight draws in paired hands', () => {
+  test('should find a gutshot on a paired flop', () => {
+    // Board: 8♠ 8♦ 6♣, Hand: 5♥ 4♥ - a 7 makes 8-7-6-5-4
+    const evaluation = evaluateWithHoleCards(['8s', '8d', '6c'], ['5h', '4h']);
+
+    expect(evaluation.isPair).toBe(true);
+    expect(evaluation.isInsideStraightDraw).toBe(true);
+    expect(evaluation.isStraightDraw).toBe(true);
+    expect(evaluation.isOpenEndedStraightDraw).toBe(false);
+    expect(evaluation.keyCards.isInsideStraightDraw.map(c => c[0])).toEqual(['8', '6', '5', '4']);
+  });
+
+  test('should find an open-ended draw in the paired combination on a paired turn', () => {
+    // Board: K♠ 8♦ 6♣ 6♥, Hand: 9♦ 7♦ - 9-8-7-6 needs a T or a 5
+    const board = ['Ks', '8d', '6c', '6h'];
+    const holeCards = ['9d', '7d'];
+    const result = evaluateHand([...board, ...holeCards], false, holeCards);
+    const paired = result['9d, 8d, 7d, 6c, 6h'];
+
+    expect(paired.isPair).toBe(true);
+    expect(paired.isOpenEndedStraightDraw).toBe(true);
+    expect(anyCombinationHas(board, holeCards, 'isOpenEndedStraightDraw')).toBe(true);
+  });
+
+  test('should find a straight draw in a paired hand without hole cards', () => {
+    const evaluation = Object.values(evaluateHand(['8s', '8d', '6c', '5h', '4h']))[0];
+
+    expect(evaluation.isInsideStraightDraw).toBe(true);
+  });
+
+  test('should prefer the hole card as key card when it pairs a drawing rank', () => {
+    // Board: 8♠ 6♣ 4♣ 2♦, Hand: 8♥ 5♥ - in 8♠ 8♥ 6♣ 5♥ 4♣ the 8 is reported from the hole cards
+    const result = evaluateHand(['8s', '6c', '4c', '2d', '8h', '5h'], false, ['8h', '5h']);
+    const paired = result['8s, 8h, 6c, 5h, 4c'];
+
+    expect(paired.isInsideStraightDraw).toBe(true);
+    expect(paired.keyCards.isInsideStraightDraw).toEqual(['8h', '6c', '5h', '4c']);
+  });
+
+  test('should not find a straight draw with only three distinct ranks', () => {
+    // Board: 8♠ 8♦ 6♣, Hand: 6♥ 5♥ - two pair, 8-6-5 is too few ranks for a straight draw
+    const evaluation = evaluateWithHoleCards(['8s', '8d', '6c'], ['6h', '5h']);
+
+    expect(evaluation.isStraightDraw).toBe(false);
+  });
+
+  test('should not count a hole card that only pairs a board straight draw', () => {
+    // Board: 9♠ 8♦ 7♣ 6♥, Hand: 9♥ 2♣ - the 9♥ adds no new rank to the board's 9-8-7-6
+    expect(anyCombinationHas(['9s', '8d', '7c', '6h'], ['9h', '2c'], 'isOpenEndedStraightDraw')).toBe(false);
+    expect(anyCombinationHas(['9s', '8d', '7c', '6h'], ['9h', '2c'], 'isStraightDraw')).toBe(false);
+  });
+
+  test('should find a wheel draw in a paired hand', () => {
+    // Board: A♠ A♦ 3♣, Hand: 4♥ 2♥ - A-2-3-4 needs a 5
+    const evaluation = evaluateWithHoleCards(['As', 'Ad', '3c'], ['4h', '2h']);
+
+    expect(evaluation.isStraightDraw).toBe(true);
+  });
+});

@@ -1082,8 +1082,9 @@ class HandEvaluator {
   /**
    * Determines if the hand is an open-ended straight draw (one card away from a straight on either end).
    * Checks both standard and wheel-equivalent open-ended draws.
-   * When hole cards are supplied, the four drawing cards must include at least one hole card.
-   * Returns false if the hand already contains pairs, two pair, three of a kind, full house, four of a kind, or a straight.
+   * Paired cards count once, so a paired hand can still hold a straight draw.
+   * When hole cards are supplied, a hole card must add a rank the board does not already have.
+   * Returns false if the hand is already a straight.
    * 
    * @returns {boolean} True if the hand is an open-ended straight draw, false otherwise
    * @example
@@ -1098,7 +1099,7 @@ class HandEvaluator {
     if (this.evaluation.isFullHouse === undefined) this.#isFullHouse();
     if (this.evaluation.isFourOfAKind === undefined) this.#isFourOfAKind();
     if (this.evaluation.isStraight === undefined) this.#isStraight();
-    if (this.evaluation.isPair || this.evaluation.isTwoPair || this.evaluation.isThreeOfAKind || this.evaluation.isFullHouse || this.evaluation.isFourOfAKind || this.evaluation.isStraight) {
+    if (this.evaluation.isStraight) {
       // Check wheel equivalent before returning false
       if (this.#isOpenEndedStraightDrawWheel()) return this.evaluation.isOpenEndedStraightDraw = true;
       return this.evaluation.isOpenEndedStraightDraw = false;
@@ -1113,7 +1114,7 @@ class HandEvaluator {
   /**
    * Determines if the hand is an open-ended straight draw using wheel ranking.
    * Checks for wheel-equivalent open-ended draws (e.g., A-2-3-4 needs 5 or 2).
-   * Returns false if the hand already contains pairs or higher, or is a wheel straight.
+   * Paired cards count once. Returns false if the hand is already a wheel straight.
    * 
    * @returns {boolean} True if the hand is a wheel-equivalent open-ended straight draw, false otherwise
    */
@@ -1125,15 +1126,16 @@ class HandEvaluator {
     if (this.evaluation.isFullHouse === undefined) this.#isFullHouse();
     if (this.evaluation.isFourOfAKind === undefined) this.#isFourOfAKind();
     if (this.evaluation.isStraightWheel === undefined) this.#isStraightWheel();
-    if (this.evaluation.isPair || this.evaluation.isTwoPair || this.evaluation.isThreeOfAKind || this.evaluation.isFullHouse || this.evaluation.isFourOfAKind || this.evaluation.isStraightWheel) return this.evaluation.isOpenEndedStraightDrawWheel = false;
+    if (this.evaluation.isStraightWheel) return this.evaluation.isOpenEndedStraightDrawWheel = false;
     return this.evaluation.isOpenEndedStraightDrawWheel = this.#findStraightDrawWindow([3], true) !== null;
   }
 
   /**
    * Determines if the hand is an inside straight draw (one card away from a straight, but the needed card is in the middle).
    * Checks both standard and wheel-equivalent inside draws.
-   * When hole cards are supplied, the four drawing cards must include at least one hole card.
-   * Returns false if the hand already contains pairs, two pair, three of a kind, full house, four of a kind, or a straight.
+   * Paired cards count once, so a paired hand can still hold a straight draw.
+   * When hole cards are supplied, a hole card must add a rank the board does not already have.
+   * Returns false if the hand is already a straight.
    * 
    * @returns {boolean} True if the hand is an inside straight draw, false otherwise
    * @example
@@ -1148,7 +1150,7 @@ class HandEvaluator {
     if (this.evaluation.isFullHouse === undefined) this.#isFullHouse();
     if (this.evaluation.isFourOfAKind === undefined) this.#isFourOfAKind();
     if (this.evaluation.isStraight === undefined) this.#isStraight();
-    if (this.evaluation.isPair || this.evaluation.isTwoPair || this.evaluation.isThreeOfAKind || this.evaluation.isFullHouse || this.evaluation.isFourOfAKind || this.evaluation.isStraight) {
+    if (this.evaluation.isStraight) {
       // Check wheel equivalent before returning false
       if (this.#isInsideStraightDrawWheel()) return this.evaluation.isInsideStraightDraw = true;
       return this.evaluation.isInsideStraightDraw = false;
@@ -1164,7 +1166,7 @@ class HandEvaluator {
   /**
    * Determines if the hand is an inside straight draw using wheel ranking.
    * Checks for wheel-equivalent inside draws (e.g., A-2-3-5 needs 4).
-   * Returns false if the hand already contains pairs or higher, or is a wheel straight.
+   * Paired cards count once. Returns false if the hand is already a wheel straight.
    * 
    * @returns {boolean} True if the hand is a wheel-equivalent inside straight draw, false otherwise
    */
@@ -1176,7 +1178,7 @@ class HandEvaluator {
     if (this.evaluation.isFullHouse === undefined) this.#isFullHouse();
     if (this.evaluation.isFourOfAKind === undefined) this.#isFourOfAKind();
     if (this.evaluation.isStraightWheel === undefined) this.#isStraightWheel();
-    if (this.evaluation.isPair || this.evaluation.isTwoPair || this.evaluation.isThreeOfAKind || this.evaluation.isFullHouse || this.evaluation.isFourOfAKind || this.evaluation.isStraightWheel) return this.evaluation.isInsideStraightDrawWheel = false;
+    if (this.evaluation.isStraightWheel) return this.evaluation.isInsideStraightDrawWheel = false;
 
     return this.evaluation.isInsideStraightDrawWheel = this.#findStraightDrawWindow([4], true) !== null;
   }
@@ -1696,9 +1698,11 @@ class HandEvaluator {
   }
 
   /**
-   * Finds 4 rank-adjacent cards (the highest four or the lowest four) whose rank span is one of
-   * the given distances. When hole cards are supplied, a window made only of board cards is
-   * skipped, since a draw the board gives every player is not the player's draw.
+   * Finds 4 cards of distinct, rank-adjacent ranks whose rank span is one of the given distances.
+   * Paired cards count once (a hole card is preferred as the representative of its rank), so a
+   * paired hand such as 8-8-6-5-4 still finds its 8-6-5-4 draw. When hole cards are supplied, a
+   * window whose ranks are all already on the board is skipped, since a draw the board gives
+   * every player is not the player's draw.
    * 
    * @private
    * @param {number[]} distances - Accepted rank spans for the 4 cards (3 = open-ended, 4 = inside)
@@ -1708,11 +1712,19 @@ class HandEvaluator {
   #findStraightDrawWindow(distances, wheel) {
     const rankValue = wheel ? c => this.#getRankValueWheel(c) : c => this.#getRankValue(c);
     if (wheel) this.#sortWheel(); else this.#sort();
-    for (const window of [this.cards.slice(0, 4), this.cards.slice(1, 5)]) {
-      const distance = wheel ? this.#getDistanceWheel(window) : this.#getDistance(window);
-      if (distances.includes(distance) && this.#usesHoleCard(window)) {
-        return [...window].sort((a, b) => rankValue(b) - rankValue(a));
+    const distinct = [];
+    for (const card of this.cards) {
+      const last = distinct[distinct.length - 1];
+      if (last && rankValue(last) === rankValue(card)) {
+        if (this.holeCards && this.holeCards.includes(card)) distinct[distinct.length - 1] = card;
+        continue;
       }
+      distinct.push(card);
+    }
+    for (let i = 0; i + 4 <= distinct.length; i++) {
+      const window = distinct.slice(i, i + 4);
+      const distance = rankValue(window[0]) - rankValue(window[3]);
+      if (distances.includes(distance) && this.#addsRankToBoard(window)) return window;
     }
     return null;
   }
@@ -1741,6 +1753,23 @@ class HandEvaluator {
   #usesHoleCard(cards) {
     if (!this.holeCards) return true;
     return cards.some(c => this.holeCards.includes(c));
+  }
+
+  /**
+   * Determines whether a straight draw's cards include a rank the board does not already have.
+   * A hole card that only pairs a board rank adds nothing to a straight draw, so when hole cards
+   * are supplied the draw must contain a rank found only in the hole cards. Without hole cards
+   * every draw qualifies.
+   * 
+   * @private
+   * @param {string[]} cards - The cards forming the draw
+   * @returns {boolean} True if no hole cards were supplied or a drawing rank is missing from the board
+   */
+  #addsRankToBoard(cards) {
+    if (!this.holeCards) return true;
+    const fullHand = this.originalCards || this.cards;
+    const boardRanks = new Set(fullHand.filter(c => !this.holeCards.includes(c)).map(c => c.slice(0, -1)));
+    return cards.some(c => !boardRanks.has(c.slice(0, -1)));
   }
 
   // ==================== HIGH CARD ====================
