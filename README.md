@@ -491,7 +491,7 @@ Creates a new HandEvaluator instance.
 
 ### Villain Range Blockers
 
-Pass a villain range as the fourth argument to see which of its combos the known cards rule out, and what those blocked combos would have made:
+Pass a villain range as the fourth argument to see which of its combos the known cards rule out, and what those blocked combos would have made or been drawing to:
 
 ```javascript
 const board = ['Kh', '9h', '4h', '2c'];
@@ -507,7 +507,10 @@ villainRange.heroBlocks;
 //     isFlush: ['AhQh'],                    // your A♥ blocks villain's nut flush
 //     isStraight: [], isThreeOfAKind: [], isTwoPair: [],
 //     isPair: ['AsAh', 'AhAd', 'AhAc'],
-//     isHighCard: []
+//     isHighCard: [],
+//     isFlushDraw: ['AsAh', 'AhAd', 'AhAc'],  // A♥ plus three board hearts
+//     isBackdoorFlushDraw: [], isOpenEndedStraightDraw: [], isInsideStraightDraw: [],
+//     isStraightDraw: [], isComboDraw: []
 //   }
 // }
 ```
@@ -518,7 +521,7 @@ The result has three views, each `{ unblocked, blocked }`:
 - `heroBlocks` - blocked by one of the hole cards
 - `allBlocks` - blocked by any known card; `unblocked` here is what villain can actually hold
 
-`unblocked` is an array of combos. `blocked` groups combos by the made hand villain would hold with them on this board (the best five of board + combo), keyed by the made hand flag from `isRoyalFlush` to `isHighCard`. Every key is always present, empty when no combo falls in it. A combo containing a board card cannot be dealt, so it has no hand and is left out of `blocked`; as a result `boardBlocks.blocked` is always empty, and those combos only show up as missing from `unblocked`.
+`unblocked` is an array of combos. `blocked` groups combos by what villain would hold with them on this board, keyed by flag. Each combo is listed under its made hand (the best five of board + combo, `isRoyalFlush` to `isHighCard`) and also under every draw it holds (`isFlushDraw`, `isBackdoorFlushDraw`, `isOpenEndedStraightDraw`, `isInsideStraightDraw`, `isStraightDraw`, `isComboDraw`). Draws are evaluated with the combo as villain's hole cards, so they follow the same rules as hero's: the draw must use one of villain's cards, there are no backdoor draws on the turn and no draws on the river. Every key is always present, empty when no combo falls in it. A combo containing a board card cannot be dealt, so it has no hand and is left out of `blocked`; as a result `boardBlocks.blocked` is always empty, and those combos only show up as missing from `unblocked`.
 
 Shorthand is expanded to combos, so a partly blocked entry such as `AKs` is split across both lists. Combos are written high rank first (`'AhKd'`, and `'QsQh'` for pairs with suits ordered s, h, d, c), duplicates are removed, and input order is kept. Without `holeCards`, every card is treated as board, so `heroBlocks` blocks nothing. In non-strict mode every combination carries the same `villainRange`. The property is omitted when no range is supplied, and an invalid entry throws.
 

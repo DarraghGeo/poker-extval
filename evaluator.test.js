@@ -3297,10 +3297,12 @@ describe('Villain range blockers', () => {
     expect(grouped(range.boardBlocks.blocked)).toEqual({});
   });
 
-  test('should include every made hand category in blocked', () => {
+  test('should include every made hand and draw category in blocked', () => {
     expect(Object.keys(villainRangeOf(['AA']).heroBlocks.blocked)).toEqual([
       'isRoyalFlush', 'isStraightFlush', 'isFourOfAKind', 'isFullHouse', 'isFlush',
-      'isStraight', 'isThreeOfAKind', 'isTwoPair', 'isPair', 'isHighCard'
+      'isStraight', 'isThreeOfAKind', 'isTwoPair', 'isPair', 'isHighCard',
+      'isFlushDraw', 'isBackdoorFlushDraw', 'isOpenEndedStraightDraw', 'isInsideStraightDraw',
+      'isStraightDraw', 'isComboDraw'
     ]);
   });
 
@@ -3311,8 +3313,44 @@ describe('Villain range blockers', () => {
     expect(grouped(range.heroBlocks.blocked)).toEqual({
       isFlush: ['AhQh', 'Ah5h'],
       isPair: ['AsAh', 'AhAd', 'AhAc'],
-      isHighCard: ['JsTs', 'JsTh', 'JsTd', 'JsTc']
+      isHighCard: ['JsTs', 'JsTh', 'JsTd', 'JsTc'],
+      isFlushDraw: ['AsAh', 'AhAd', 'AhAc', 'JsTh'],
+      isInsideStraightDraw: ['JsTs', 'JsTh', 'JsTd', 'JsTc'],
+      isStraightDraw: ['JsTs', 'JsTh', 'JsTd', 'JsTc'],
+      isComboDraw: ['JsTh']
     });
+  });
+
+  test('should list a blocked combo under its made hand and every draw it holds on the flop', () => {
+    // Board: K♥ 9♥ 4♣, Hand: A♥ J♠
+    const range = villainRangeOf(['AQs', 'JT', 'AA'], ['Kh', '9h', '4c', 'Ah', 'Js']);
+    const blocked = range.heroBlocks.blocked;
+
+    expect(blocked.isHighCard).toContain('AhQh');
+    expect(blocked.isFlushDraw).toEqual(['AhQh']);
+    expect(blocked.isBackdoorFlushDraw).toEqual(['JsTh', 'AsAh', 'AhAd', 'AhAc']);
+    expect(blocked.isInsideStraightDraw).toEqual(['JsTs', 'JsTh', 'JsTd', 'JsTc']);
+    expect(blocked.isPair).toEqual(['AsAh', 'AhAd', 'AhAc']);
+  });
+
+  test('should only count villain draws that use a villain card', () => {
+    // Board: 9♠ 8♦ 7♣ 6♥, Hand: A♥ J♠ - A♥A♦ has only the board's open-ender, so no draw of its own
+    const range = villainRangeOf(['AA'], ['9s', '8d', '7c', '6h', 'Ah', 'Js']);
+
+    expect(range.heroBlocks.blocked.isPair).toEqual(['AsAh', 'AhAd', 'AhAc']);
+    expect(range.heroBlocks.blocked.isStraightDraw).toEqual([]);
+  });
+
+  test('should apply the street to villain draws', () => {
+    const turn = villainRangeOf(['JT', 'AA'], ['Kh', '9h', '4c', '2d', 'Ah', 'Js']).heroBlocks.blocked;
+    const river = villainRangeOf(['JT', 'AA'], ['Kh', '9h', '4c', '2d', '7s', 'Ah', 'Js']).heroBlocks.blocked;
+
+    expect(turn.isBackdoorFlushDraw).toEqual([]);
+    expect(turn.isInsideStraightDraw).toEqual(['JsTs', 'JsTh', 'JsTd', 'JsTc']);
+    for (const draw of ['isFlushDraw', 'isBackdoorFlushDraw', 'isOpenEndedStraightDraw',
+      'isInsideStraightDraw', 'isStraightDraw', 'isComboDraw']) {
+      expect(river[draw]).toEqual([]);
+    }
   });
 
   test('should categorise using the best five cards of board and combo', () => {

@@ -71,6 +71,21 @@ const MADE_HAND_PROPERTIES = [
   'isHighCard'
 ];
 
+/**
+ * Draw properties used to group blocked villain combos. The wheel draw flags are left out since
+ * wheel draws are already counted in isOpenEndedStraightDraw and isInsideStraightDraw.
+ *
+ * @constant {string[]}
+ */
+const VILLAIN_DRAW_PROPERTIES = [
+  'isFlushDraw',
+  'isBackdoorFlushDraw',
+  'isOpenEndedStraightDraw',
+  'isInsideStraightDraw',
+  'isStraightDraw',
+  'isComboDraw'
+];
+
 const STRAIGHT_DRAW_PROPERTIES = [
   'isOpenEndedStraightDraw',
   'isInsideStraightDraw',
@@ -210,9 +225,11 @@ class HandEvaluator {
    * - heroBlocks: blocked by the hole cards (always unblocked without hole cards)
    * - allBlocks: blocked by any known card
    *
-   * `unblocked` is an array of combos. `blocked` groups combos by the made hand villain would
-   * hold with them on this board (the best five of board + combo), keyed by the made hand flag
-   * (isRoyalFlush ... isHighCard; every key is present, empty when no combo falls in it).
+   * `unblocked` is an array of combos. `blocked` groups combos by what villain would hold with
+   * them on this board, keyed by flag: each combo is listed under its made hand (the best five of
+   * board + combo, isRoyalFlush ... isHighCard) and also under every draw it holds (isFlushDraw ...
+   * isComboDraw), evaluated with the combo as villain's hole cards so the draw must use one of
+   * them. Every key is present, empty when no combo falls in it.
    * Combos containing a board card cannot be dealt, so they have no hand and are left out of
    * `blocked` (so boardBlocks.blocked is always empty).
    *
@@ -229,20 +246,25 @@ class HandEvaluator {
     const allCards = new Set(fullHand);
     const cardsOf = combo => [combo.slice(0, 2), combo.slice(2)];
     const categories = new Map();
-    const categoryOf = combo => {
+    const categoriesOf = combo => {
       if (!categories.has(combo)) {
-        const evaluation = Object.values(new HandEvaluator([...boardCards, ...cardsOf(combo)]).evaluation)[0];
-        categories.set(combo, MADE_HAND_PROPERTIES.find(hand => evaluation[hand]));
+        const villainCards = cardsOf(combo);
+        const evaluation = Object.values(new HandEvaluator([...boardCards, ...villainCards], true, villainCards).evaluation)[0];
+        categories.set(combo, [
+          MADE_HAND_PROPERTIES.find(hand => evaluation[hand]),
+          ...VILLAIN_DRAW_PROPERTIES.filter(draw => evaluation[draw])
+        ]);
       }
       return categories.get(combo);
     };
     const split = blockers => {
-      const result = { unblocked: [], blocked: Object.fromEntries(MADE_HAND_PROPERTIES.map(hand => [hand, []])) };
+      const blocked = Object.fromEntries([...MADE_HAND_PROPERTIES, ...VILLAIN_DRAW_PROPERTIES].map(key => [key, []]));
+      const result = { unblocked: [], blocked };
       for (const combo of combos) {
         if (!cardsOf(combo).some(c => blockers.has(c))) {
           result.unblocked.push(combo);
         } else if (!cardsOf(combo).some(c => boardCards.has(c))) {
-          result.blocked[categoryOf(combo)].push(combo);
+          for (const category of categoriesOf(combo)) blocked[category].push(combo);
         }
       }
       return result;
