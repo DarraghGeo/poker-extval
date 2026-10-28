@@ -491,24 +491,34 @@ Creates a new HandEvaluator instance.
 
 ### Villain Range Blockers
 
-Pass a villain range as the fourth argument to see which of its combos the known cards rule out:
+Pass a villain range as the fourth argument to see which of its combos the known cards rule out, and what those blocked combos would have made:
 
 ```javascript
-const board = ['Kh', '8d', '4c'];
+const board = ['Kh', '9h', '4h', '2c'];
 const holeCards = ['Ah', 'Js'];
-const result = evaluateHand([...board, ...holeCards], true, holeCards, ['AKs', 'QQ', 'JsTs']);
+const result = evaluateHand([...board, ...holeCards], true, holeCards, ['AQs', 'AA', 'QQ']);
 const { villainRange } = Object.values(result)[0];
 
-villainRange.allBlocks;
-// { unblocked: ['AsKs', 'AdKd', 'AcKc', 'QsQh', 'QsQd', 'QsQc', 'QhQd', 'QhQc', 'QdQc'],
-//   blocked:   ['AhKh', 'JsTs'] }
+villainRange.heroBlocks;
+// {
+//   unblocked: ['AsQs', 'AdQd', 'AcQc', 'AsAd', 'AsAc', 'AdAc', 'QsQh', 'QsQd', 'QsQc', 'QhQd', 'QhQc', 'QdQc'],
+//   blocked: {
+//     isRoyalFlush: [], isStraightFlush: [], isFourOfAKind: [], isFullHouse: [],
+//     isFlush: ['AhQh'],                    // your A♥ blocks villain's nut flush
+//     isStraight: [], isThreeOfAKind: [], isTwoPair: [],
+//     isPair: ['AsAh', 'AhAd', 'AhAc'],
+//     isHighCard: []
+//   }
+// }
 ```
 
-The result has three views, each `{ unblocked: [], blocked: [] }` of exact combos:
+The result has three views, each `{ unblocked, blocked }`:
 
 - `boardBlocks` - blocked by a board card (every card in `cards` that is not a hole card)
 - `heroBlocks` - blocked by one of the hole cards
 - `allBlocks` - blocked by any known card; `unblocked` here is what villain can actually hold
+
+`unblocked` is an array of combos. `blocked` groups combos by the made hand villain would hold with them on this board (the best five of board + combo), keyed by the made hand flag from `isRoyalFlush` to `isHighCard`. Every key is always present, empty when no combo falls in it. A combo containing a board card cannot be dealt, so it has no hand and is left out of `blocked`; as a result `boardBlocks.blocked` is always empty, and those combos only show up as missing from `unblocked`.
 
 Shorthand is expanded to combos, so a partly blocked entry such as `AKs` is split across both lists. Combos are written high rank first (`'AhKd'`, and `'QsQh'` for pairs with suits ordered s, h, d, c), duplicates are removed, and input order is kept. Without `holeCards`, every card is treated as board, so `heroBlocks` blocks nothing. In non-strict mode every combination carries the same `villainRange`. The property is omitted when no range is supplied, and an invalid entry throws.
 

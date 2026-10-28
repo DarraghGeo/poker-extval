@@ -3269,74 +3269,103 @@ describe('Every flag is always a boolean', () => {
 describe('Villain range blockers', () => {
   const board = ['Kh', '8d', '4c'];
   const holeCards = ['Ah', 'Js'];
-  const villainRangeOf = (range, hole = holeCards, strict = true) =>
-    Object.values(evaluateHand([...board, ...hole], strict, hole, range))[0].villainRange;
+  const villainRangeOf = (range, cards = [...board, ...holeCards], hole = holeCards, strict = true) =>
+    Object.values(evaluateHand(cards, strict, hole, range))[0].villainRange;
+  // A hand none of these tests' ranges touch, so every combo is unblocked
+  const expand = range => villainRangeOf(range, ['2c', '3d', '4h', '5s', '7c'], ['5s', '7c']).allBlocks.unblocked;
+  const grouped = (blocked) => Object.fromEntries(Object.entries(blocked).filter(([, combos]) => combos.length));
 
   test('should omit villainRange when no range is supplied', () => {
     expect(evaluateWithHoleCards(board, holeCards)).not.toHaveProperty('villainRange');
   });
 
-  test('should report which known cards block each combo', () => {
+  test('should list unblocked combos for each set of blockers', () => {
     const range = villainRangeOf(['AhKd', 'KhQs', 'JsTs', 'QcQd']);
 
-    expect(range.boardBlocks).toEqual({ unblocked: ['AhKd', 'JsTs', 'QdQc'], blocked: ['KhQs'] });
-    expect(range.heroBlocks).toEqual({ unblocked: ['KhQs', 'QdQc'], blocked: ['AhKd', 'JsTs'] });
-    expect(range.allBlocks).toEqual({ unblocked: ['QdQc'], blocked: ['AhKd', 'KhQs', 'JsTs'] });
+    expect(range.boardBlocks.unblocked).toEqual(['AhKd', 'JsTs', 'QdQc']);
+    expect(range.heroBlocks.unblocked).toEqual(['KhQs', 'QdQc']);
+    expect(range.allBlocks.unblocked).toEqual(['QdQc']);
+  });
+
+  test('should group blocked combos by the hand villain would make, leaving out combos with a board card', () => {
+    // A♥K♦ makes a pair of kings and is blocked by the A♥;
+    // K♥Q♠ contains the board's K♥, so it cannot be dealt and is left out
+    const range = villainRangeOf(['AhKd', 'KhQs', 'JsTs', 'QcQd']);
+
+    expect(grouped(range.heroBlocks.blocked)).toEqual({ isPair: ['AhKd'], isHighCard: ['JsTs'] });
+    expect(grouped(range.allBlocks.blocked)).toEqual({ isPair: ['AhKd'], isHighCard: ['JsTs'] });
+    expect(grouped(range.boardBlocks.blocked)).toEqual({});
+  });
+
+  test('should include every made hand category in blocked', () => {
+    expect(Object.keys(villainRangeOf(['AA']).heroBlocks.blocked)).toEqual([
+      'isRoyalFlush', 'isStraightFlush', 'isFourOfAKind', 'isFullHouse', 'isFlush',
+      'isStraight', 'isThreeOfAKind', 'isTwoPair', 'isPair', 'isHighCard'
+    ]);
+  });
+
+  test('should categorise blocked combos on a flush board', () => {
+    // Board: K♥ 9♥ 4♥ 2♣, Hand: A♥ J♠ - the A♥ blocks villain's ace-high flushes
+    const range = villainRangeOf(['AQs', 'A5s', 'AA', 'JT'], ['Kh', '9h', '4h', '2c', 'Ah', 'Js']);
+
+    expect(grouped(range.heroBlocks.blocked)).toEqual({
+      isFlush: ['AhQh', 'Ah5h'],
+      isPair: ['AsAh', 'AhAd', 'AhAc'],
+      isHighCard: ['JsTs', 'JsTh', 'JsTd', 'JsTc']
+    });
+  });
+
+  test('should categorise using the best five cards of board and combo', () => {
+    // Board: 9♠ 8♦ 7♣ 2♥, Hand: A♥ J♠ - J♠T♦ makes a jack-high straight
+    const range = villainRangeOf(['JsTd', 'AhAd'], ['9s', '8d', '7c', '2h', 'Ah', 'Js']);
+
+    expect(grouped(range.heroBlocks.blocked)).toEqual({ isStraight: ['JsTd'], isPair: ['AhAd'] });
   });
 
   test('should expand pairs, suited, offsuit and any-suit shorthand', () => {
-    const counts = entry => villainRangeOf([entry]).allBlocks;
-    const total = entry => counts(entry).unblocked.length + counts(entry).blocked.length;
-
-    expect(total('QQ')).toBe(6);
-    expect(total('AKs')).toBe(4);
-    expect(total('AKo')).toBe(12);
-    expect(total('AK')).toBe(16);
-    expect(total('KA')).toBe(16);
+    expect(expand(['QQ'])).toHaveLength(6);
+    expect(expand(['AKs'])).toEqual(['AsKs', 'AhKh', 'AdKd', 'AcKc']);
+    expect(expand(['AKo'])).toHaveLength(12);
+    expect(expand(['AK'])).toHaveLength(16);
+    expect(expand(['KA'])).toHaveLength(16);
   });
 
   test('should expand plus shorthand', () => {
-    const combos = entry => {
-      const { unblocked, blocked } = villainRangeOf([entry]).allBlocks;
-      return [...unblocked, ...blocked];
-    };
-
-    expect(combos('QQ+')).toHaveLength(18);
-    expect(new Set(combos('ATs+').map(c => c[0] + c[2]))).toEqual(new Set(['AT', 'AJ', 'AQ', 'AK']));
-    expect(combos('ATs+')).toHaveLength(16);
-    expect(combos('K9o+')).toHaveLength(48);
+    expect(expand(['QQ+'])).toHaveLength(18);
+    expect(new Set(expand(['ATs+']).map(c => c[0] + c[2]))).toEqual(new Set(['AT', 'AJ', 'AQ', 'AK']));
+    expect(expand(['ATs+'])).toHaveLength(16);
+    expect(expand(['K9o+'])).toHaveLength(48);
   });
 
   test('should split a partly blocked shorthand entry into combos', () => {
-    // A♥ is a hole card, so A♥K♥ is blocked; K♥ is on the board, so every K♥ combo is blocked too
+    // A♥ is a hole card, so A♥K♥ is blocked by hero; it also holds the board's K♥, so it is not grouped
     const range = villainRangeOf(['AKs']);
 
-    expect(range.allBlocks).toEqual({ unblocked: ['AsKs', 'AdKd', 'AcKc'], blocked: ['AhKh'] });
-    expect(range.heroBlocks.blocked).toEqual(['AhKh']);
-    expect(range.boardBlocks.blocked).toEqual(['AhKh']);
+    expect(range.allBlocks.unblocked).toEqual(['AsKs', 'AdKd', 'AcKc']);
+    expect(range.heroBlocks.unblocked).toEqual(['AsKs', 'AdKd', 'AcKc']);
+    expect(grouped(range.heroBlocks.blocked)).toEqual({});
   });
 
   test('should normalise exact combos and remove duplicates', () => {
-    const range = villainRangeOf(['KdAh', 'AhKd', 'QQ', 'QsQh']);
-    const all = [...range.allBlocks.unblocked, ...range.allBlocks.blocked];
+    const combos = expand(['KdAh', 'AhKd', 'QQ', 'QsQh']);
 
-    expect(all.filter(c => c === 'AhKd')).toHaveLength(1);
-    expect(all).toHaveLength(7);
+    expect(combos.filter(c => c === 'AhKd')).toHaveLength(1);
+    expect(combos).toHaveLength(7);
   });
 
   test('should treat every card as board without hole cards', () => {
-    const result = evaluateHand(['Kh', '8d', '4c', 'Ah', 'Js'], true, null, ['AhKd', 'QcQd']);
-    const range = Object.values(result)[0].villainRange;
+    const range = villainRangeOf(['AhKd', 'QcQd'], ['Kh', '8d', '4c', 'Ah', 'Js'], null);
 
-    expect(range.heroBlocks).toEqual({ unblocked: ['AhKd', 'QdQc'], blocked: [] });
-    expect(range.boardBlocks).toEqual({ unblocked: ['QdQc'], blocked: ['AhKd'] });
+    expect(range.heroBlocks.unblocked).toEqual(['AhKd', 'QdQc']);
+    expect(grouped(range.heroBlocks.blocked)).toEqual({});
+    expect(range.boardBlocks.unblocked).toEqual(['QdQc']);
   });
 
   test('should attach the same classification to every combination in non-strict mode', () => {
     const result = evaluateHand(['Kh', '8d', '4c', '2s', 'Ah', 'Js'], false, holeCards, ['AA']);
 
     for (const evaluation of Object.values(result)) {
-      expect(evaluation.villainRange.allBlocks.blocked).toEqual(['AsAh', 'AhAd', 'AhAc']);
+      expect(grouped(evaluation.villainRange.heroBlocks.blocked)).toEqual({ isPair: ['AsAh', 'AhAd', 'AhAc'] });
     }
   });
 
