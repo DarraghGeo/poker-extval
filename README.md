@@ -126,6 +126,9 @@ const result = evaluateHand(['As', 'Ah', 'Kd', 'Kc', 'Qs'], false);
 - Descriptive labels (isTopPair, etc.) are only true if they match the strongest hand
 - Made flush or stronger cannot have straight draws (flush > straight)
 - Draws can coexist when no made hand exists (flush draw + straight draw is valid)
+- With 6 or more cards, draws are collected from **every** 5-card combination, not just the best one, so a draw using a card outside the best five is still reported. Straight draws are dropped once a straight or better is made, and flush draws once a flush or better is made. `isComboDraw` is true when the whole hand has both a flush draw and a straight draw.
+
+**Draws by street**: the number of cards sets the street. With 5 cards (the flop) every draw is possible; with 6 (the turn) there is no `isBackdoorFlushDraw`, since one card to come cannot complete it; with 7 (the river) there are no draws at all. This applies in both modes.
 
 ### Evaluating Multiple Card Hands
 
@@ -190,6 +193,8 @@ The `evaluateHand()` function returns an object where:
 - `isTopThreeOfAKind` - Three of a kind is the highest rank
 - `isMiddleThreeOfAKind` - Three of a kind is neither highest nor lowest
 - `isBottomThreeOfAKind` - Three of a kind is the lowest rank
+
+**Note**: With `holeCards`, pair and three of a kind positions are judged against the **whole board**, including board cards left out of the 5-card combination: top means at or above the highest board card (so a pocket pair above the board is top pair), bottom means at or below the lowest, middle is anything between. A pair or three of a kind made only of board cards gets no position. Without `holeCards` the board is unknown, so positions are judged within the 5-card combination. Two pair positions are always judged within the 5-card combination.
 
 #### Overcard Categorization (requires `holeCards`; not filtered by strict mode)
 - `isOvercard` - At least one hole card ranks above every board card

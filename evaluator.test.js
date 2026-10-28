@@ -3135,3 +3135,108 @@ describe('Input handling', () => {
     expect(cards).toEqual(['2c', 'Kd', '7h', 'As', '9s']);
   });
 });
+
+describe('Turn and river evaluation with hole cards', () => {
+  const trueFlags = evaluation => Object.keys(evaluation).filter(k => evaluation[k] === true);
+
+  describe('Pair and three of a kind position against the whole board', () => {
+    test.each([
+      [['4h', '9h', '7h'], ['9d', '8c'], 'isTopPair'],
+      [['4h', '9h', '7h', 'Td'], ['9d', '8c'], 'isMiddlePair'],
+      [['4h', '9h', '7h', 'Kd'], ['9d', '8c'], 'isMiddlePair'],
+      [['4h', '9h', '7h', 'Td', 'Kc'], ['9d', '8c'], 'isMiddlePair'],
+      [['Kh', '8d', '4c', '2s'], ['4d', '5d'], 'isMiddlePair'],
+      [['Jd', '8c', '3h'], ['Qs', 'Qh'], 'isTopPair'],
+      [['Jd', '8c', '5h', 'Kd'], ['3s', '3h'], 'isBottomPair'],
+      [['Kd', '9c', '3h', '2s'], ['9s', '9d'], 'isMiddleThreeOfAKind'],
+      [['9d', '9c', '3h'], ['Ks', '9h'], 'isTopThreeOfAKind']
+    ])('board %j with %j should be %s', (board, holeCards, expected) => {
+      const flags = trueFlags(evaluateWithHoleCards(board, holeCards));
+      const positions = ['isTopPair', 'isMiddlePair', 'isBottomPair',
+        'isTopThreeOfAKind', 'isMiddleThreeOfAKind', 'isBottomThreeOfAKind'];
+
+      expect(flags.filter(f => positions.includes(f))).toEqual([expected]);
+    });
+
+    test('should not give a board pair a position', () => {
+      // Board: 8♦ 8♣ 3♥, Hand: A♠ K♥ - the pair of 8s is on the board
+      const evaluation = evaluateWithHoleCards(['8d', '8c', '3h'], ['As', 'Kh']);
+
+      expect(evaluation.isPair).toBe(true);
+      expect(evaluation.isTopPair || evaluation.isMiddlePair || evaluation.isBottomPair).toBe(false);
+    });
+
+    test('should not give board trips a position', () => {
+      const evaluation = evaluateWithHoleCards(['3d', '3c', '3h'], ['Ks', 'Qh']);
+
+      expect(evaluation.isThreeOfAKind).toBe(true);
+      expect(evaluation.isTopThreeOfAKind || evaluation.isMiddleThreeOfAKind || evaluation.isBottomThreeOfAKind).toBe(false);
+    });
+  });
+
+  describe('Strict mode reports draws from every combination', () => {
+    test('should find a flush draw and combo draw that use a card outside the best five', () => {
+      // Board: 4♥ 9♥ 7♥ 8♠, Hand: A♥ J♠ - four hearts plus a gutshot (J-9-8-7 needs a T)
+      const evaluation = evaluateWithHoleCards(['4h', '9h', '7h', '8s'], ['Ah', 'Js']);
+
+      expect(evaluation.isFlushDraw).toBe(true);
+      expect(evaluation.keyCards.isFlushDraw).toEqual(['Ah', '9h', '7h', '4h']);
+      expect(evaluation.isInsideStraightDraw).toBe(true);
+      expect(evaluation.isComboDraw).toBe(true);
+      expect(evaluation.isBackdoorFlushDraw).toBe(false);
+    });
+
+    test('should find a flush draw and a wheel gutshot together', () => {
+      // Board: K♥ 8♥ 2♣ 3♦, Hand: A♥ 5♥ - four hearts plus A-2-3-5 (needs a 4)
+      const evaluation = evaluateWithHoleCards(['Kh', '8h', '2c', '3d'], ['Ah', '5h']);
+
+      expect(evaluation.isFlushDraw).toBe(true);
+      expect(evaluation.isInsideStraightDraw).toBe(true);
+      expect(evaluation.isComboDraw).toBe(true);
+      expect(evaluation.keyCards.isComboDraw).toEqual(['Ah', 'Kh', '8h', '5h', '3d', '2c']);
+    });
+
+    test('should not report straight draws alongside a made straight', () => {
+      // Board: 9♠ 8♦ 7♣ 6♥, Hand: 5♠ 2♦ - the 9-high straight is made
+      const evaluation = evaluateWithHoleCards(['9s', '8d', '7c', '6h'], ['5s', '2d']);
+
+      expect(evaluation.isStraight).toBe(true);
+      expect(evaluation.isStraightDraw).toBe(false);
+    });
+
+    test('should not report flush draws alongside a made flush', () => {
+      // Board: K♥ 9♥ 4♥ 2♠, Hand: A♥ 7♥ - a made flush; four-heart combinations are not draws
+      const evaluation = evaluateWithHoleCards(['Kh', '9h', '4h', '2s'], ['Ah', '7h']);
+
+      expect(evaluation.isFlush).toBe(true);
+      expect(evaluation.isFlushDraw).toBe(false);
+    });
+  });
+
+  describe('Draws by street', () => {
+    test('should report no draws on the river', () => {
+      // Board: 2♣ 7♦ 8♥ K♣ 3♠, Hand: 9♠ T♦ - T-9-8-7 has no cards to come
+      const evaluation = evaluateWithHoleCards(['2c', '7d', '8h', 'Kc', '3s'], ['9s', 'Td']);
+
+      expect(evaluation.isOpenEndedStraightDraw).toBe(false);
+      expect(evaluation.isStraightDraw).toBe(false);
+      expect(evaluation.isHighCard).toBe(true);
+    });
+
+    test('should report no draws in any river combination in non-strict mode', () => {
+      const combinations = evaluateAllCombinationsWithHoleCards(['4h', '9h', '7h', '8s', 'Ad'], ['Ah', 'Js']);
+
+      expect(combinations.some(e => e.isFlushDraw || e.isBackdoorFlushDraw || e.isStraightDraw || e.isComboDraw)).toBe(false);
+    });
+
+    test('should report no backdoor flush draw on the turn', () => {
+      // Board: K♥ 8♦ 4♣ 2♠, Hand: 4♦ 5♦ - three diamonds with one card to come
+      expect(anyCombinationHas(['Kh', '8d', '4c', '2s'], ['4d', '5d'], 'isBackdoorFlushDraw')).toBe(false);
+      expect(evaluateWithHoleCards(['Kh', '8d', '4c', '2s'], ['4d', '5d']).isBackdoorFlushDraw).toBe(false);
+    });
+
+    test('should still report a backdoor flush draw on the flop', () => {
+      expect(evaluateWithHoleCards(['Kd', '7s', '2s'], ['Ad', 'Qd']).isBackdoorFlushDraw).toBe(true);
+    });
+  });
+});

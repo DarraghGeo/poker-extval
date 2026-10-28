@@ -36,6 +36,31 @@ const HOLE_CARD_CATEGORIES = new Set([
   'isTwoUndercards'
 ]);
 
+/**
+ * Draw properties. On 6+ cards they describe the whole hand rather than one 5-card combination,
+ * so strict mode collects them from every combination (see #mergeDraws).
+ *
+ * @constant {string[]}
+ */
+const DRAW_PROPERTIES = [
+  'isFlushDraw',
+  'isBackdoorFlushDraw',
+  'isOpenEndedStraightDraw',
+  'isInsideStraightDraw',
+  'isStraightDraw',
+  'isOpenEndedStraightDrawWheel',
+  'isInsideStraightDrawWheel',
+  'isComboDraw'
+];
+
+const STRAIGHT_DRAW_PROPERTIES = [
+  'isOpenEndedStraightDraw',
+  'isInsideStraightDraw',
+  'isStraightDraw',
+  'isOpenEndedStraightDrawWheel',
+  'isInsideStraightDrawWheel'
+];
+
 class HandEvaluator {
   /**
    * Creates an instance of HandEvaluator.
@@ -272,6 +297,7 @@ class HandEvaluator {
     this.#isInsideStraightDraw();
     this.#isStraightDraw();
     this.#isComboDraw();
+    this.#clearDrawsForStreet();
     this.#isUnderPair();
     this.#isOvercards();
     this.#isHighCard();
@@ -501,7 +527,70 @@ class HandEvaluator {
       result[key] = tempEvaluator.evaluation[evaluationKey];
     }
     
-    return this.strict ? this.#findBestCombination(result) : result;
+    if (!this.strict) return result;
+    const best = this.#findBestCombination(result);
+    this.#mergeDraws(Object.values(best)[0], result);
+    return best;
+  }
+
+  /**
+   * Removes draws that can no longer complete, based on how many cards the full hand holds:
+   * 5 cards is the flop (two cards to come), 6 is the turn (one card to come, so a backdoor
+   * draw cannot complete) and 7 or more is the river (no cards to come, so there are no draws).
+   *
+   * @private
+   */
+  #clearDrawsForStreet() {
+    const cardCount = (this.originalCards || this.cards).length;
+    if (cardCount >= 7) {
+      for (const draw of DRAW_PROPERTIES) this.evaluation[draw] = false;
+    } else if (cardCount === 6) {
+      this.evaluation.isBackdoorFlushDraw = false;
+    }
+  }
+
+  /**
+   * In strict mode with 6+ cards only the best 5-card combination is returned, but a draw can
+   * use cards outside it (e.g. the hole card that makes four to a flush). Copies onto the best
+   * evaluation every draw found in any combination, with that combination's key and kicker
+   * cards, then drops draws the made hand already beats and recomputes the combo draw for the
+   * whole hand.
+   *
+   * @private
+   * @param {Object} best - The evaluation of the best combination (modified in place)
+   * @param {Object<string, Object>} result - Evaluations of every combination
+   */
+  #mergeDraws(best, result) {
+    const clear = draw => {
+      best[draw] = false;
+      best.keyCards[draw] = [];
+      best.kickerCards[draw] = [];
+    };
+    for (const draw of DRAW_PROPERTIES) {
+      if (draw === 'isComboDraw' || best[draw]) continue;
+      const source = Object.values(result).find(evaluation => evaluation[draw]);
+      if (!source) continue;
+      best[draw] = true;
+      best.keyCards[draw] = source.keyCards[draw];
+      best.kickerCards[draw] = source.kickerCards[draw];
+    }
+
+    // A made straight or better needs no straight draw; a made flush or better needs no flush draw
+    const strongest = this.#getHandStrength(best);
+    if (strongest >= 5) STRAIGHT_DRAW_PROPERTIES.forEach(clear);
+    if (strongest >= 6) ['isFlushDraw', 'isBackdoorFlushDraw'].forEach(clear);
+
+    if (best.isComboDraw || !(best.isFlushDraw && best.isStraightDraw)) {
+      if (!(best.isFlushDraw && best.isStraightDraw)) clear('isComboDraw');
+      return;
+    }
+    best.isComboDraw = true;
+    const keyCards = [...new Set([...best.keyCards.isFlushDraw, ...best.keyCards.isStraightDraw])]
+      .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
+    best.keyCards.isComboDraw = keyCards;
+    best.kickerCards.isComboDraw = this.cards
+      .filter(c => !keyCards.includes(c))
+      .sort((a, b) => this.#getRankValue(b) - this.#getRankValue(a));
   }
 
   /**
@@ -797,6 +886,8 @@ class HandEvaluator {
     if (this.evaluation.isTopPair !== undefined) return this.evaluation.isTopPair;
     if (this.evaluation.isPair === undefined) this.#isPair();
     if (!this.evaluation.isPair) return this.evaluation.isTopPair = false;
+    const position = this.#getBoardPosition(this.#getPairRank());
+    if (position !== null) return this.evaluation.isTopPair = position === 'top';
     const rankCounts = this.#getRankCounts();
     return this.evaluation.isTopPair = rankCounts[this.cards[0].slice(0, -1)] === 2;
   }
@@ -815,6 +906,8 @@ class HandEvaluator {
     if (this.evaluation.isPair === undefined) this.#isPair();
     if (this.evaluation.isTwoPair === undefined) this.#isTwoPair();
     if (!this.evaluation.isPair || this.evaluation.isTwoPair) return this.evaluation.isMiddlePair = false;
+    const position = this.#getBoardPosition(this.#getPairRank());
+    if (position !== null) return this.evaluation.isMiddlePair = position === 'middle';
     const ranks = this.#getRankCountsSorted();
     return this.evaluation.isMiddlePair = ranks.length === 4 && (ranks[1].count === 2 || ranks[2].count === 2);
   }
@@ -832,6 +925,8 @@ class HandEvaluator {
     if (this.evaluation.isBottomPair !== undefined) return this.evaluation.isBottomPair;
     if (this.evaluation.isPair === undefined) this.#isPair();
     if (!this.evaluation.isPair) return this.evaluation.isBottomPair = false;
+    const position = this.#getBoardPosition(this.#getPairRank());
+    if (position !== null) return this.evaluation.isBottomPair = position === 'bottom';
     const rankCounts = this.#getRankCounts();
     return this.evaluation.isBottomPair = rankCounts[this.cards[this.cards.length - 1].slice(0, -1)] === 2;
   }
@@ -904,6 +999,8 @@ class HandEvaluator {
     if (this.evaluation.isTopThreeOfAKind !== undefined) return this.evaluation.isTopThreeOfAKind;
     if (this.evaluation.isThreeOfAKind === undefined) this.#isThreeOfAKind();
     if (!this.evaluation.isThreeOfAKind) return this.evaluation.isTopThreeOfAKind = false;
+    const position = this.#getBoardPosition(this.#getTripsRank());
+    if (position !== null) return this.evaluation.isTopThreeOfAKind = position === 'top';
     const rankCounts = this.#getRankCounts();
     return this.evaluation.isTopThreeOfAKind = rankCounts[this.cards[0].slice(0, -1)] === 3;
   }
@@ -921,6 +1018,8 @@ class HandEvaluator {
     if (this.evaluation.isMiddleThreeOfAKind !== undefined) return this.evaluation.isMiddleThreeOfAKind;
     if (this.evaluation.isThreeOfAKind === undefined) this.#isThreeOfAKind();
     if (!this.evaluation.isThreeOfAKind) return this.evaluation.isMiddleThreeOfAKind = false;
+    const position = this.#getBoardPosition(this.#getTripsRank());
+    if (position !== null) return this.evaluation.isMiddleThreeOfAKind = position === 'middle';
     const ranks = this.#getRankCountsSorted();
     return this.evaluation.isMiddleThreeOfAKind = ranks.length === 3 && ranks[1].count === 3;
   }
@@ -938,6 +1037,8 @@ class HandEvaluator {
     if (this.evaluation.isBottomThreeOfAKind !== undefined) return this.evaluation.isBottomThreeOfAKind;
     if (this.evaluation.isThreeOfAKind === undefined) this.#isThreeOfAKind();
     if (!this.evaluation.isThreeOfAKind) return this.evaluation.isBottomThreeOfAKind = false;
+    const position = this.#getBoardPosition(this.#getTripsRank());
+    if (position !== null) return this.evaluation.isBottomThreeOfAKind = position === 'bottom';
     const rankCounts = this.#getRankCounts();
     return this.evaluation.isBottomThreeOfAKind = rankCounts[this.cards[this.cards.length - 1].slice(0, -1)] === 3;
   }
@@ -1850,6 +1951,42 @@ class HandEvaluator {
       if (count === 2) return rank;
     }
     return null;
+  }
+
+  /**
+   * Gets the rank of the three of a kind in the current hand.
+   *
+   * @private
+   * @returns {string|null} The rank of the three of a kind, or null if none exists
+   */
+  #getTripsRank() {
+    const rankCounts = this.#getRankCounts();
+    return Object.keys(rankCounts).find(rank => rankCounts[rank] === 3) || null;
+  }
+
+  /**
+   * Classifies a paired (or tripled) rank against the whole board, including board cards outside
+   * the current 5-card combination. Requires hole cards: without them the board is unknown and
+   * positions fall back to the 5-card combination.
+   *
+   * - 'top': the rank is at or above the highest board card (top pair, or a pocket pair above the board)
+   * - 'bottom': the rank is at or below the lowest board card
+   * - 'middle': anything in between
+   * - 'none': no hole card has this rank, so the pair or trips belongs to the board
+   *
+   * @private
+   * @param {string|null} rank - The rank to classify
+   * @returns {string|null} The position, or null if no hole cards were supplied
+   */
+  #getBoardPosition(rank) {
+    if (!this.holeCards) return null;
+    if (!rank || !this.holeCards.some(c => c.slice(0, -1) === rank)) return 'none';
+    const fullHand = this.originalCards || this.cards;
+    const boardValues = fullHand.filter(c => !this.holeCards.includes(c)).map(c => this.#getRankValue(c));
+    const value = this.#getRankValue(rank + 's');
+    if (value >= Math.max(...boardValues)) return 'top';
+    if (value <= Math.min(...boardValues)) return 'bottom';
+    return 'middle';
   }
   
   // ==================== OVERCARDS ====================
