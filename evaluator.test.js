@@ -3240,3 +3240,113 @@ describe('Turn and river evaluation with hole cards', () => {
     });
   });
 });
+
+describe('Every flag is always a boolean', () => {
+  test('should set both wheel draw flags even when a standard draw is found', () => {
+    const evaluation = evaluateWithHoleCards(['4h', '9h', '7h', '8s'], ['Ah', 'Js']);
+
+    expect(evaluation.isInsideStraightDrawWheel).toBe(false);
+    expect(evaluation.isOpenEndedStraightDrawWheel).toBe(false);
+  });
+
+  test('should give every keyCards property a boolean flag', () => {
+    const hands = [
+      ['As', 'Ks', 'Qs', 'Js', 'Ts'], ['9s', '8h', '7d', '6c', '2h'], ['As', '2d', '3c', '4h', '9h'],
+      ['Ah', 'Js', '4h', '9h', '7h', '8s'], ['Kh', '8h', '2c', '3d', 'Ah', '5h', '9c']
+    ];
+    for (const cards of hands) {
+      for (const strict of [true, false]) {
+        for (const evaluation of Object.values(evaluateHand(cards, strict))) {
+          for (const flag of Object.keys(evaluation.keyCards)) {
+            expect(typeof evaluation[flag]).toBe('boolean');
+          }
+        }
+      }
+    }
+  });
+});
+
+describe('Villain range blockers', () => {
+  const board = ['Kh', '8d', '4c'];
+  const holeCards = ['Ah', 'Js'];
+  const villainRangeOf = (range, hole = holeCards, strict = true) =>
+    Object.values(evaluateHand([...board, ...hole], strict, hole, range))[0].villainRange;
+
+  test('should omit villainRange when no range is supplied', () => {
+    expect(evaluateWithHoleCards(board, holeCards)).not.toHaveProperty('villainRange');
+  });
+
+  test('should report which known cards block each combo', () => {
+    const range = villainRangeOf(['AhKd', 'KhQs', 'JsTs', 'QcQd']);
+
+    expect(range.boardBlocks).toEqual({ unblocked: ['AhKd', 'JsTs', 'QdQc'], blocked: ['KhQs'] });
+    expect(range.heroBlocks).toEqual({ unblocked: ['KhQs', 'QdQc'], blocked: ['AhKd', 'JsTs'] });
+    expect(range.allBlocks).toEqual({ unblocked: ['QdQc'], blocked: ['AhKd', 'KhQs', 'JsTs'] });
+  });
+
+  test('should expand pairs, suited, offsuit and any-suit shorthand', () => {
+    const counts = entry => villainRangeOf([entry]).allBlocks;
+    const total = entry => counts(entry).unblocked.length + counts(entry).blocked.length;
+
+    expect(total('QQ')).toBe(6);
+    expect(total('AKs')).toBe(4);
+    expect(total('AKo')).toBe(12);
+    expect(total('AK')).toBe(16);
+    expect(total('KA')).toBe(16);
+  });
+
+  test('should expand plus shorthand', () => {
+    const combos = entry => {
+      const { unblocked, blocked } = villainRangeOf([entry]).allBlocks;
+      return [...unblocked, ...blocked];
+    };
+
+    expect(combos('QQ+')).toHaveLength(18);
+    expect(new Set(combos('ATs+').map(c => c[0] + c[2]))).toEqual(new Set(['AT', 'AJ', 'AQ', 'AK']));
+    expect(combos('ATs+')).toHaveLength(16);
+    expect(combos('K9o+')).toHaveLength(48);
+  });
+
+  test('should split a partly blocked shorthand entry into combos', () => {
+    // A♥ is a hole card, so A♥K♥ is blocked; K♥ is on the board, so every K♥ combo is blocked too
+    const range = villainRangeOf(['AKs']);
+
+    expect(range.allBlocks).toEqual({ unblocked: ['AsKs', 'AdKd', 'AcKc'], blocked: ['AhKh'] });
+    expect(range.heroBlocks.blocked).toEqual(['AhKh']);
+    expect(range.boardBlocks.blocked).toEqual(['AhKh']);
+  });
+
+  test('should normalise exact combos and remove duplicates', () => {
+    const range = villainRangeOf(['KdAh', 'AhKd', 'QQ', 'QsQh']);
+    const all = [...range.allBlocks.unblocked, ...range.allBlocks.blocked];
+
+    expect(all.filter(c => c === 'AhKd')).toHaveLength(1);
+    expect(all).toHaveLength(7);
+  });
+
+  test('should treat every card as board without hole cards', () => {
+    const result = evaluateHand(['Kh', '8d', '4c', 'Ah', 'Js'], true, null, ['AhKd', 'QcQd']);
+    const range = Object.values(result)[0].villainRange;
+
+    expect(range.heroBlocks).toEqual({ unblocked: ['AhKd', 'QdQc'], blocked: [] });
+    expect(range.boardBlocks).toEqual({ unblocked: ['QdQc'], blocked: ['AhKd'] });
+  });
+
+  test('should attach the same classification to every combination in non-strict mode', () => {
+    const result = evaluateHand(['Kh', '8d', '4c', '2s', 'Ah', 'Js'], false, holeCards, ['AA']);
+
+    for (const evaluation of Object.values(result)) {
+      expect(evaluation.villainRange.allBlocks.blocked).toEqual(['AsAh', 'AhAd', 'AhAc']);
+    }
+  });
+
+  test.each([
+    ['not an array', 'AK', 'Villain range must be an array'],
+    ['an invalid rank', ['AX'], 'Invalid villain range entry at index 0: "AX"'],
+    ['a suited pair', ['AAs'], 'Invalid villain range entry at index 0: "AAs"'],
+    ['the same card twice', ['AsAs'], 'Invalid villain range entry at index 0: "AsAs"'],
+    ['a non-string entry', ['AK', 5], 'Invalid villain range entry at index 1: "5"']
+  ])('should throw for %s', (_, range, message) => {
+    expect(() => evaluateHand([...board, ...holeCards], true, holeCards, range)).toThrow(message);
+  });
+});

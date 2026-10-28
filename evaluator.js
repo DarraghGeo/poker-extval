@@ -73,9 +73,14 @@ class HandEvaluator {
    * @param {string[]|null} [holeCards=null] - Optional array of exactly 2 cards identifying the player's
    *   hole cards. Required for the overcard categorizations (isOvercard, isTwoOvercards, etc.); without it
    *   those properties are always false. Both cards must be present in `cards`.
+   * @param {string[]|null} [villainRange=null] - Optional array of villain hands, as exact combos ('AhKd') or
+   *   shorthand ('QQ', 'AKs', 'AKo', 'AK', 'TT+', 'ATs+', 'ATo+', 'AT+'). When supplied, every evaluation
+   *   gets a `villainRange` property listing which combos the known cards block (see #classifyVillainRange).
+   * @param {string[]|null} [originalCards=null] - Internal: the full hand when evaluating one 5-card combination
    * @throws {Error} If cards is not an array, has fewer than 5 cards, contains invalid format,
    *   invalid rank, invalid suit, or duplicate cards
    * @throws {Error} If holeCards is provided but is not an array of exactly 2 distinct cards drawn from `cards`
+   * @throws {Error} If villainRange is provided but is not an array of valid combos or shorthand
    * @example
    * const evaluator = new HandEvaluator(['As', 'Ks', 'Qs', 'Js', 'Ts']);
    * @example
@@ -88,7 +93,7 @@ class HandEvaluator {
    * // With hole cards - enables overcard categorization
    * const withHoleCards = new HandEvaluator(['Ks', 'Qh', '8d', '3c', 'Ad', 'Jh'], true, ['Ad', 'Jh']);
    */
-  constructor(cards, strict = true, holeCards = null, originalCards = null) {
+  constructor(cards, strict = true, holeCards = null, villainRange = null, originalCards = null) {
     this.#validateCards(cards);
     // Copy so that in-place sorting during evaluation never reorders the caller's array
     this.cards = [...cards];
@@ -100,7 +105,117 @@ class HandEvaluator {
       this.#validateHoleCards(holeCards, this.originalCards || cards);
       this.holeCards = holeCards;
     }
+    const villainCombos = villainRange === null || villainRange === undefined ? null : this.#parseVillainRange(villainRange);
     this.evaluation = this.#evaluateAllCombinations();
+    if (villainCombos) {
+      const classification = this.#classifyVillainRange(villainCombos);
+      for (const evaluation of Object.values(this.evaluation)) evaluation.villainRange = classification;
+    }
+  }
+
+  // ==================== VILLAIN RANGE ====================
+
+  /**
+   * Expands a villain range into exact two-card combos, in input order and without duplicates.
+   * Each combo is written high rank first, with suits ordered s, h, d, c for pairs (e.g. 'AhKd', 'QsQh').
+   *
+   * Accepted entries:
+   * - Exact combo: 'AhKd' (either card order)
+   * - Pair: 'QQ' (6 combos); 'TT+' adds every higher pair
+   * - Suited: 'AKs' (4 combos); offsuit: 'AKo' (12 combos); either: 'AK' (16 combos)
+   * - Plus forms keep the first rank and raise the second up to one below it: 'ATs+' is ATs, AJs, AQs, AKs
+   *
+   * @private
+   * @param {string[]} villainRange - Range entries to expand
+   * @returns {string[]} Exact combos
+   * @throws {Error} If villainRange is not an array or an entry is not a valid combo or shorthand
+   */
+  #parseVillainRange(villainRange) {
+    if (!Array.isArray(villainRange)) {
+      throw new Error('Villain range must be an array');
+    }
+    const ranks = 'AKQJT98765432';
+    const suits = 'shdc';
+    const combos = [];
+    const seen = new Set();
+    const add = (first, second) => {
+      // High rank first; for equal ranks, order suits s, h, d, c
+      const order = c => ranks.indexOf(c[0]) * 4 + suits.indexOf(c[1]);
+      const [a, b] = order(first) <= order(second) ? [first, second] : [second, first];
+      if (!seen.has(a + b)) {
+        seen.add(a + b);
+        combos.push(a + b);
+      }
+    };
+    const addRanks = (high, low, type) => {
+      for (const s1 of suits) {
+        for (const s2 of suits) {
+          if (high === low ? suits.indexOf(s2) <= suits.indexOf(s1) : (type === 's' && s1 !== s2) || (type === 'o' && s1 === s2)) continue;
+          add(high + s1, low + s2);
+        }
+      }
+    };
+
+    villainRange.forEach((entry, i) => {
+      const invalid = () => new Error(`Invalid villain range entry at index ${i}: "${entry}"`);
+      if (typeof entry !== 'string') throw invalid();
+
+      const exact = entry.match(/^([AKQJT2-9])([shdc])([AKQJT2-9])([shdc])$/);
+      if (exact) {
+        const [first, second] = [exact[1] + exact[2], exact[3] + exact[4]];
+        if (first === second) throw invalid();
+        add(first, second);
+        return;
+      }
+
+      const shorthand = entry.match(/^([AKQJT2-9])([AKQJT2-9])([so]?)(\+?)$/);
+      if (!shorthand) throw invalid();
+      const [, r1, r2, type, plus] = shorthand;
+      const [high, low] = ranks.indexOf(r1) <= ranks.indexOf(r2) ? [r1, r2] : [r2, r1];
+      if (high === low) {
+        if (type) throw invalid();
+        const lows = plus ? ranks.slice(0, ranks.indexOf(high) + 1) : high;
+        for (const rank of lows) addRanks(rank, rank);
+        return;
+      }
+      const lows = plus ? ranks.slice(ranks.indexOf(high) + 1, ranks.indexOf(low) + 1) : low;
+      for (const rank of lows) addRanks(high, rank, type);
+    });
+    return combos;
+  }
+
+  /**
+   * Splits villain combos by which known cards block them. A combo is blocked when it shares a
+   * card with the blockers, so villain cannot hold it.
+   *
+   * - boardBlocks: blocked by the board (every card that is not a hole card)
+   * - heroBlocks: blocked by the hole cards (always unblocked without hole cards)
+   * - allBlocks: blocked by any known card
+   *
+   * Without hole cards every card passed is treated as board.
+   *
+   * @private
+   * @param {string[]} combos - Exact combos from #parseVillainRange
+   * @returns {{boardBlocks: Object, heroBlocks: Object, allBlocks: Object}} Each with `unblocked` and `blocked` arrays
+   */
+  #classifyVillainRange(combos) {
+    const fullHand = this.originalCards || this.cards;
+    const heroCards = new Set(this.holeCards || []);
+    const boardCards = new Set(fullHand.filter(c => !heroCards.has(c)));
+    const allCards = new Set(fullHand);
+    const split = blockers => {
+      const result = { unblocked: [], blocked: [] };
+      for (const combo of combos) {
+        const isBlocked = blockers.has(combo.slice(0, 2)) || blockers.has(combo.slice(2));
+        result[isBlocked ? 'blocked' : 'unblocked'].push(combo);
+      }
+      return result;
+    };
+    return {
+      boardBlocks: split(boardCards),
+      heroBlocks: split(heroCards),
+      allBlocks: split(allCards)
+    };
   }
 
   /**
@@ -296,6 +411,9 @@ class HandEvaluator {
     this.#isOpenEndedStraightDraw();
     this.#isInsideStraightDraw();
     this.#isStraightDraw();
+    // Always set the wheel flags; the standard draw checks above only evaluate them as a fallback
+    this.#isOpenEndedStraightDrawWheel();
+    this.#isInsideStraightDrawWheel();
     this.#isComboDraw();
     this.#clearDrawsForStreet();
     this.#isUnderPair();
@@ -371,9 +489,7 @@ class HandEvaluator {
     
     // Filter draws: made flush or stronger cannot have straight draws
     if (strongest >= 6) {
-      evaluation.isStraightDraw = false;
-      evaluation.isOpenEndedStraightDraw = false;
-      evaluation.isInsideStraightDraw = false;
+      for (const draw of STRAIGHT_DRAW_PROPERTIES) evaluation[draw] = false;
     }
   }
 
@@ -522,7 +638,7 @@ class HandEvaluator {
     const result = {};
     for (const combination of combinations) {
       const key = this.#formatHandKey(combination);
-      const tempEvaluator = new HandEvaluator(combination, this.strict, this.holeCards, this.originalCards);
+      const tempEvaluator = new HandEvaluator(combination, this.strict, this.holeCards, null, this.originalCards);
       const evaluationKey = Object.keys(tempEvaluator.evaluation)[0];
       result[key] = tempEvaluator.evaluation[evaluationKey];
     }
@@ -2111,10 +2227,13 @@ class HandEvaluator {
  *   Required for the overcard categorizations (isOvercard, isTwoOvercards, isOvercardAndMiddleCard,
  *   isOvercardAndUndercard, isTwoMiddleCards, isMiddleAndUndercard, isTwoUndercards); without it those
  *   properties are always false. Both cards must be present in `cards`.
+ * @param {string[]|null} [villainRange=null] - Optional villain hands as exact combos ('AhKd') or shorthand
+ *   ('QQ', 'AKs', 'AKo', 'AK', 'TT+', 'ATs+'). When supplied, each evaluation includes
+ *   `villainRange: { boardBlocks, heroBlocks, allBlocks }`, each `{ unblocked: [], blocked: [] }` of exact combos.
  * @returns {Object} Object mapping sorted hand strings (e.g., "As, Ks, Qs, Js, Ts") to evaluation objects with boolean fields for all hand types and draws
  */
-function evaluateHand(cards, strict = true, holeCards = null) {
-  const evaluator = new HandEvaluator(cards, strict, holeCards);
+function evaluateHand(cards, strict = true, holeCards = null, villainRange = null) {
+  const evaluator = new HandEvaluator(cards, strict, holeCards, villainRange);
   return evaluator.evaluation;
 }
 

@@ -451,7 +451,7 @@ The test suite includes 700+ tests covering:
 
 ## API Reference
 
-### `evaluateHand(cards, strict, holeCards)`
+### `evaluateHand(cards, strict, holeCards, villainRange)`
 
 Main function to evaluate poker hands.
 
@@ -459,6 +459,7 @@ Main function to evaluate poker hands.
 - `cards` (string[]): Array of 5 or more card strings
 - `strict` (boolean, optional): If `true`, only the strongest made hand and stronger draws are marked. If `false`, all applicable hand types are marked (default: `true`).
 - `holeCards` (string[] | null, optional): Exactly 2 cards identifying the player's hole cards, both of which must appear in `cards`. Required for the overcard categorizations; without it those properties are always `false` (default: `null`).
+- `villainRange` (string[] | null, optional): Villain hands as exact combos (`'AhKd'`) or shorthand (`'QQ'`, `'AKs'`, `'AKo'`, `'AK'`, `'TT+'`, `'ATs+'`, `'ATo+'`, `'AT+'`). When supplied, each evaluation gets a `villainRange` property; see [Villain Range Blockers](#villain-range-blockers) (default: `null`).
 
 **Returns:**
 - Object mapping sorted hand strings to evaluation objects
@@ -471,7 +472,7 @@ Main function to evaluate poker hands.
 #### Constructor
 
 ```javascript
-new HandEvaluator(cards, strict, holeCards)
+new HandEvaluator(cards, strict, holeCards, villainRange)
 ```
 
 Creates a new HandEvaluator instance.
@@ -480,12 +481,36 @@ Creates a new HandEvaluator instance.
 - `cards` (string[]): Array of 5 or more card strings
 - `strict` (boolean, optional): If `true`, only the strongest made hand and stronger draws are marked. If `false`, all applicable hand types are marked (default: `true`).
 - `holeCards` (string[] | null, optional): Exactly 2 cards identifying the player's hole cards, both of which must appear in `cards`. Required for the overcard categorizations (default: `null`).
+- `villainRange` (string[] | null, optional): Villain hands as exact combos (`'AhKd'`) or shorthand (`'QQ'`, `'AKs'`, `'AKo'`, `'AK'`, `'TT+'`, `'ATs+'`, `'ATo+'`, `'AT+'`). When supplied, each evaluation gets a `villainRange` property; see [Villain Range Blockers](#villain-range-blockers) (default: `null`).
 
 **Properties:**
 - `evaluation` - Object mapping sorted hand strings to evaluation objects (same format as `evaluateHand()` return value)
 - `cards` - Array of input cards
 - `strict` - Boolean indicating whether strict mode is enabled
 - `holeCards` - Array of the 2 hole cards, or `null` if none were supplied
+
+### Villain Range Blockers
+
+Pass a villain range as the fourth argument to see which of its combos the known cards rule out:
+
+```javascript
+const board = ['Kh', '8d', '4c'];
+const holeCards = ['Ah', 'Js'];
+const result = evaluateHand([...board, ...holeCards], true, holeCards, ['AKs', 'QQ', 'JsTs']);
+const { villainRange } = Object.values(result)[0];
+
+villainRange.allBlocks;
+// { unblocked: ['AsKs', 'AdKd', 'AcKc', 'QsQh', 'QsQd', 'QsQc', 'QhQd', 'QhQc', 'QdQc'],
+//   blocked:   ['AhKh', 'JsTs'] }
+```
+
+The result has three views, each `{ unblocked: [], blocked: [] }` of exact combos:
+
+- `boardBlocks` - blocked by a board card (every card in `cards` that is not a hole card)
+- `heroBlocks` - blocked by one of the hole cards
+- `allBlocks` - blocked by any known card; `unblocked` here is what villain can actually hold
+
+Shorthand is expanded to combos, so a partly blocked entry such as `AKs` is split across both lists. Combos are written high rank first (`'AhKd'`, and `'QsQh'` for pairs with suits ordered s, h, d, c), duplicates are removed, and input order is kept. Without `holeCards`, every card is treated as board, so `heroBlocks` blocks nothing. In non-strict mode every combination carries the same `villainRange`. The property is omitted when no range is supplied, and an invalid entry throws.
 
 **Note**: All internal methods are private. Use the `evaluation` property to access evaluation results.
 
