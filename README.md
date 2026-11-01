@@ -248,7 +248,7 @@ const { compareHands, equity } = require('poker-extval');
 compareHands(['Ah', 'Kd'], ['Qs', 'Qc'], ['Ks', '7h', '2d']);  // 1 (kings beat queens)
 
 await equity(['Ah', 'Js'], 'KK', ['4h', '9h', '7h']);
-// { win: 2994, tie: 30, lose: 4032, equity: 0.4264... }
+// { win: 2676, tie: 0, lose: 3264, equity: 0.4505... }  (5,940 runouts: 990 for each KK combo)
 ```
 
 - `compareHands(handA, handB, board)` returns `1` if `handA` wins, `-1` if `handB` wins, `0` for a tie. Each hand plus the board must be 5 to 7 cards.

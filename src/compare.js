@@ -65,7 +65,7 @@ function toCombos(hand) {
  * @throws {Error} If the board, dead cards or a range is invalid
  * @example
  * const result = await equity(['Ah', 'Js'], 'KK', ['4h', '9h', '7h']);
- * // result.equity: about 0.43
+ * // result.equity: about 0.45 (2676 wins, 3264 losses over 5,940 runouts)
  */
 async function equity(hero, villain, board = [], options = {}) {
   const { deadCards = [], iterations = 10000 } = options;

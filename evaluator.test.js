@@ -3644,6 +3644,41 @@ describe('equity', () => {
     expect(withBlocked).toEqual(without);
   });
 
+  test('should count exactly the runouts a brute-force deal gives on the flop and turn', async () => {
+    // Deals every runout from the cards nobody holds, ranking hands with evaluate(). poker-bitvaljs
+    // before 1.6.0 also dealt the players' own hole cards (1176 flop runouts instead of 990).
+    const ranks = '23456789TJQKA';
+    const deck = [];
+    for (const r of ranks) for (const s of 'shdc') deck.push(r + s);
+    const compareRanks = (a, b) => {
+      for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        if ((a[i] || 0) !== (b[i] || 0)) return Math.sign((a[i] || 0) - (b[i] || 0));
+      }
+      return 0;
+    };
+    const bruteForce = (hero, villain, board) => {
+      const tally = { win: 0, tie: 0, lose: 0 };
+      const rest = deck.filter(c => ![...board, ...hero, ...villain].includes(c));
+      const deal = (start, runout) => {
+        if (board.length + runout.length === 5) {
+          const full = [...board, ...runout];
+          const result = compareRanks(evaluate([...full, ...hero], { street: 'river' }).rank, evaluate([...full, ...villain], { street: 'river' }).rank);
+          tally[result > 0 ? 'win' : result < 0 ? 'lose' : 'tie']++;
+          return;
+        }
+        for (let i = start; i < rest.length; i++) deal(i + 1, [...runout, rest[i]]);
+      };
+      deal(0, []);
+      return tally;
+    };
+
+    for (const board of [['2c', '7d', '9h'], ['2c', '7d', '9h', '3s']]) {
+      const { win, tie, lose } = await equity(['As', 'Ks'], ['Qh', 'Qd'], board);
+      expect({ board, win, tie, lose }).toEqual({ board, ...bruteForce(['As', 'Ks'], ['Qh', 'Qd'], board) });
+    }
+    expect((await equity(['As', 'Ks'], ['Qh', 'Qd'], ['2c', '7d', '9h'])).win + 753).toBe(990);
+  });
+
   test('should reject a board that is not 0, 3, 4 or 5 cards', async () => {
     await expect(equity('AA', 'KK', ['2c', '3d'])).rejects.toThrow('Board must be 0, 3, 4 or 5 cards, received 2');
   });
