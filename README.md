@@ -1,6 +1,6 @@
 # Poker Hand Evaluator
 
-A Texas Hold'em hand evaluator for Node.js. Give it 5 to 7 cards (board plus hole cards) and it tells you what the player holds: the made hand, where it sits on the board (top pair, over pair, bottom set), every draw that uses the player's cards, how the hole cards rank against the board, and which of a villain's combos the known cards block. It also compares hands and calculates equity.
+A Texas Hold'em hand evaluator for the browser and Node.js. Give it 5 to 7 cards (board plus hole cards) and it tells you what the player holds: the made hand, where it sits on the board (top pair, over pair, bottom set), every draw that uses the player's cards, how the hole cards rank against the board, and which of a villain's combos the known cards block. It also compares hands and calculates equity.
 
 ## Contents
 
@@ -27,7 +27,12 @@ A Texas Hold'em hand evaluator for Node.js. Give it 5 to 7 cards (board plus hol
 npm install poker-extval
 ```
 
-Requires Node.js 20.19+ or 22.13+ (range parsing uses [poker-rangeman](https://github.com/DarraghGeo/poker-rangeman), an ES module this CommonJS package loads with `require`).
+Works in the browser through any bundler (tested with esbuild, webpack and Vite) and in Node.js 20.19+ or 22.13+. Node needs those versions because range parsing uses [poker-rangeman](https://github.com/DarraghGeo/poker-rangeman), an ES module this CommonJS package loads with `require`; on older Node everything except ranges and equity still works.
+
+```javascript
+import { evaluate } from 'poker-extval';           // bundler / ES modules
+const { evaluate } = require('poker-extval');      // CommonJS
+```
 
 ## Quick start
 
@@ -310,11 +315,17 @@ npm test
 
 Runs the Jest suite (over 800 tests) and type-checks `index.d.ts`. Alongside the per-hand tests, the suite checks strict mode's best hand, every draw, and hand ranks against independent reference implementations on random hands.
 
+```bash
+npm run test:browser
+```
+
+Bundles the package for the browser with esbuild, runs every public function in headless Chromium, and checks the results match Node. It needs a Playwright Chromium (`npx playwright-core install chromium`).
+
 ## Releasing
 
 Pushing to `main` publishes to npm via GitHub Actions (`.github/workflows/publish.yml`), using npm trusted publishing so no token is stored. A push publishes only when it changes the package's code (`evaluator.js`, `src/`, `index.d.ts`) or `package.json`; changes to docs or tests alone do not. A release runs the tests, bumps the patch version (unless `package.json` already holds a version that is not on npm yet, e.g. a manual `npm version minor --no-git-tag-version`), commits the bump back to `main`, tags it `v<version>` and publishes. The workflow can also be started by hand from the Actions tab.
 
-Tests run on every push and pull request (`.github/workflows/test.yml`) on each supported Node version.
+Tests run on every push and pull request (`.github/workflows/test.yml`) on each supported Node version, plus the browser test in headless Chromium.
 
 ## License
 

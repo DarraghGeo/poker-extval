@@ -10,21 +10,18 @@ const { MADE_HANDS, VILLAIN_DRAWS } = require('./flags');
 let RangeManager = null;
 
 /**
- * Loads poker-rangeman on first use. It is an ES module, which Node 20.19+ and 22.13+ can
- * require() (22.12 can too, but warns that the feature is experimental). It is loaded through
- * Node's own module system so that test runners with their own module loader (such as Jest) load
- * it the same way Node does.
+ * Loads poker-rangeman on first use. It is an ES module: bundlers include it as usual, and Node
+ * 20.19+ / 22.13+ can require() it.
  *
  * @returns {Function} The RangeManager class
  * @throws {Error} On a Node version that cannot require() ES modules
  */
 function loadRangeManager() {
   if (!RangeManager) {
-    const nodeRequire = process.getBuiltinModule ? process.getBuiltinModule('module').createRequire(__filename) : require;
     try {
-      ({ RangeManager } = nodeRequire('poker-rangeman'));
+      ({ RangeManager } = require('poker-rangeman'));
     } catch (error) {
-      throw new Error(`Ranges need Node.js 20.19+ or 22.13+ to load poker-rangeman (running ${process.version}): ${error.message}`);
+      throw new Error(`Ranges need a bundler or Node.js 20.19+ / 22.13+ to load poker-rangeman: ${error.message}`);
     }
   }
   return RangeManager;
