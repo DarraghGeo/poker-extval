@@ -1,15 +1,19 @@
 {
   "name": "poker-extval",
-  "version": "4.1.0",
-  "description": "Poker hand evaluator with comprehensive test suite",
+  "version": "5.0.0",
+  "description": "Poker hand evaluator: made hands, draws, board-relative labels, villain range blockers, hand comparison and equity",
   "main": "evaluator.js",
   "files": [
     "evaluator.js",
+    "index.d.ts",
+    "src/",
     "LICENSE",
     "README.md"
   ],
   "scripts": {
-    "test": "jest",
+    "test": "jest && npm run test:types",
+    "test:jest": "jest",
+    "test:types": "tsc --noEmit --strict --target es2020 --module commonjs --moduleResolution node test/types.ts",
     "test:watch": "jest --watch",
     "benchmark": "node benchmark.js"
   },
@@ -20,7 +24,11 @@
     "poker-hand",
     "poker-evaluation",
     "card-game",
-    "texas-holdem"
+    "texas-holdem",
+    "draws",
+    "blockers",
+    "range",
+    "equity"
   ],
   "author": "Darragh Geoghegan",
   "license": "MIT",
@@ -33,9 +41,21 @@
   },
   "homepage": "https://github.com/DarraghGeo/poker-extval#readme",
   "engines": {
-    "node": ">=12.0.0"
+    "node": "^20.19.0 || >=22.13.0"
   },
   "devDependencies": {
-    "jest": "^29.7.0"
+    "jest": "^29.7.0",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "poker-bitvaljs": "^1.5.2",
+    "poker-rangeman": "^3.4.0"
+  },
+  "types": "index.d.ts",
+  "jest": {
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/test/types.ts"
+    ]
   }
 }

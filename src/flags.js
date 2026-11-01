@@ -23,7 +23,7 @@ const MADE_HANDS = Object.freeze([
 const HAND_STRENGTH = Object.freeze(Object.fromEntries(MADE_HANDS.map((hand, i) => [hand, MADE_HANDS.length - i])));
 
 /** Position labels for a pair, and the made hand they describe. */
-const PAIR_LABELS = Object.freeze(['isTopPair', 'isMiddlePair', 'isBottomPair']);
+const PAIR_LABELS = Object.freeze(['isOverPair', 'isTopPair', 'isMiddlePair', 'isBottomPair', 'isUnderPair']);
 const TWO_PAIR_LABELS = Object.freeze(['isTopAndMiddlePair', 'isTopAndBottomPair', 'isMiddleAndBottomPair']);
 const THREE_OF_A_KIND_LABELS = Object.freeze(['isTopThreeOfAKind', 'isMiddleThreeOfAKind', 'isBottomThreeOfAKind']);
 
@@ -83,7 +83,10 @@ const ALL_FLAGS = Object.freeze([
   'isThreeOfAKind',
   'isTwoPair',
   'isPair',
-  ...PAIR_LABELS,
+  'isOverPair',
+  'isTopPair',
+  'isMiddlePair',
+  'isBottomPair',
   ...TWO_PAIR_LABELS,
   ...THREE_OF_A_KIND_LABELS,
   'isFlushDraw',

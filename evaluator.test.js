@@ -8,7 +8,7 @@
  * @copyright Copyright (c) 2025 Darragh Geoghegan
  */
 
-const { evaluateHand, HandEvaluator } = require('./evaluator');
+const { evaluateHand, HandEvaluator, classifyRange, parseRange, evaluate, compareHands, equity } = require('./evaluator');
 
 // ==================== HAND EVALUATOR CLASS METHOD TESTS ====================
 // Note: These tests verify internal functionality through the public evaluateHand API
@@ -875,8 +875,8 @@ const TEST_CASES = {
     passable: [
       { cards: ["9s", "8h", "7d", "5c", "Kh"], description: "Inside straight 9-8-7-5, need 6" },
       { cards: ["Ts", "9h", "8d", "6c", "Kh"], description: "Inside straight T-9-8-6, need 7" },
-      { cards: ["Js", "Th", "9d", "7c", "Kh"], description: "Inside straight J-T-9-7, need 8" },
-      { cards: ["Qs", "Jh", "Td", "8c", "Kh"], description: "Inside straight Q-J-T-8, need 9" },
+      { cards: ["Js", "Th", "9d", "7c", "2h"], description: "Inside straight J-T-9-7, need 8" },
+      { cards: ["Qs", "Jh", "Td", "8c", "2h"], description: "Inside straight Q-J-T-8, need 9" },
       { cards: ["Ks", "Qh", "Jd", "9c", "Ah"], description: "Inside straight K-Q-J-9, need T" },
       { cards: ["8s", "7h", "6d", "4c", "Ah"], description: "Inside straight 8-7-6-4, need 5" },
       { cards: ["7s", "6h", "5d", "3c", "Ah"], description: "Inside straight 7-6-5-3, need 4" },
@@ -2879,8 +2879,8 @@ describe('Draws must use a hole card', () => {
     });
 
     test('should flag an open-ended draw completed by a hole card', () => {
-      // Board: 9♠ 7♦ 6♣ 2♥, Hand: 8♥ 5♣ - the 8 makes 9876
-      expect(anyCombinationHas(['9s', '7d', '6c', '2h'], ['8h', '5c'], 'isOpenEndedStraightDraw')).toBe(true);
+      // Board: 9♠ 7♦ 6♣ 2♥, Hand: 8♥ K♣ - the 8 makes 9876
+      expect(anyCombinationHas(['9s', '7d', '6c', '2h'], ['8h', 'Kc'], 'isOpenEndedStraightDraw')).toBe(true);
     });
 
     test('should flag only the gutshot when the hole card extends a board open-ender to an inside draw', () => {
@@ -3146,13 +3146,13 @@ describe('Turn and river evaluation with hole cards', () => {
       [['4h', '9h', '7h', 'Kd'], ['9d', '8c'], 'isMiddlePair'],
       [['4h', '9h', '7h', 'Td', 'Kc'], ['9d', '8c'], 'isMiddlePair'],
       [['Kh', '8d', '4c', '2s'], ['4d', '5d'], 'isMiddlePair'],
-      [['Jd', '8c', '3h'], ['Qs', 'Qh'], 'isTopPair'],
-      [['Jd', '8c', '5h', 'Kd'], ['3s', '3h'], 'isBottomPair'],
+      [['Jd', '8c', '3h'], ['Qs', 'Qh'], 'isOverPair'],
+      [['Jd', '8c', '5h', 'Kd'], ['3s', '3h'], 'isUnderPair'],
       [['Kd', '9c', '3h', '2s'], ['9s', '9d'], 'isMiddleThreeOfAKind'],
       [['9d', '9c', '3h'], ['Ks', '9h'], 'isTopThreeOfAKind']
     ])('board %j with %j should be %s', (board, holeCards, expected) => {
       const flags = trueFlags(evaluateWithHoleCards(board, holeCards));
-      const positions = ['isTopPair', 'isMiddlePair', 'isBottomPair',
+      const positions = ['isOverPair', 'isTopPair', 'isMiddlePair', 'isBottomPair', 'isUnderPair',
         'isTopThreeOfAKind', 'isMiddleThreeOfAKind', 'isBottomThreeOfAKind'];
 
       expect(flags.filter(f => positions.includes(f))).toEqual([expected]);
@@ -3271,9 +3271,7 @@ describe('Villain range blockers', () => {
   const holeCards = ['Ah', 'Js'];
   const villainRangeOf = (range, cards = [...board, ...holeCards], hole = holeCards, strict = true) =>
     Object.values(evaluateHand(cards, strict, hole, range))[0].villainRange;
-  // A hand none of these tests' ranges touch, so every combo is unblocked
-  const expand = range => villainRangeOf(range, ['2c', '3d', '4h', '5s', '7c'], ['5s', '7c']).allBlocks.unblocked;
-  const grouped = (blocked) => Object.fromEntries(Object.entries(blocked).filter(([, combos]) => combos.length));
+  const grouped = blocked => Object.fromEntries(Object.entries(blocked).filter(([, combos]) => combos.length));
 
   test('should omit villainRange when no range is supplied', () => {
     expect(evaluateWithHoleCards(board, holeCards)).not.toHaveProperty('villainRange');
@@ -3282,27 +3280,26 @@ describe('Villain range blockers', () => {
   test('should list unblocked combos for each set of blockers', () => {
     const range = villainRangeOf(['AhKd', 'KhQs', 'JsTs', 'QcQd']);
 
-    expect(range.boardBlocks.unblocked).toEqual(['AhKd', 'JsTs', 'QdQc']);
-    expect(range.heroBlocks.unblocked).toEqual(['KhQs', 'QdQc']);
-    expect(range.allBlocks.unblocked).toEqual(['QdQc']);
+    expect(range.boardBlocks.unblocked).toEqual(['AhKd', 'JsTs', 'QcQd']);
+    expect(range.heroBlocks.unblocked).toEqual(['KhQs', 'QcQd']);
+    expect(range.allBlocks.unblocked).toEqual(['QcQd']);
   });
 
-  test('should group blocked combos by the hand villain would make, leaving out combos with a board card', () => {
-    // A♥K♦ makes a pair of kings and is blocked by the A♥;
-    // K♥Q♠ contains the board's K♥, so it cannot be dealt and is left out
+  test('should group blocked combos by hand, and combos holding a board card under onBoard', () => {
+    // A♥K♦ makes a pair of kings and is blocked by the A♥; K♥Q♠ holds the board's K♥
     const range = villainRangeOf(['AhKd', 'KhQs', 'JsTs', 'QcQd']);
 
+    expect(grouped(range.boardBlocks.blocked)).toEqual({ onBoard: ['KhQs'] });
     expect(grouped(range.heroBlocks.blocked)).toEqual({ isPair: ['AhKd'], isHighCard: ['JsTs'] });
-    expect(grouped(range.allBlocks.blocked)).toEqual({ isPair: ['AhKd'], isHighCard: ['JsTs'] });
-    expect(grouped(range.boardBlocks.blocked)).toEqual({});
+    expect(grouped(range.allBlocks.blocked)).toEqual({ isPair: ['AhKd'], isHighCard: ['JsTs'], onBoard: ['KhQs'] });
   });
 
-  test('should include every made hand and draw category in blocked', () => {
+  test('should include every made hand, draw and onBoard key in blocked', () => {
     expect(Object.keys(villainRangeOf(['AA']).heroBlocks.blocked)).toEqual([
       'isRoyalFlush', 'isStraightFlush', 'isFourOfAKind', 'isFullHouse', 'isFlush',
       'isStraight', 'isThreeOfAKind', 'isTwoPair', 'isPair', 'isHighCard',
       'isFlushDraw', 'isBackdoorFlushDraw', 'isOpenEndedStraightDraw', 'isInsideStraightDraw',
-      'isStraightDraw', 'isComboDraw'
+      'isStraightDraw', 'isComboDraw', 'onBoard'
     ]);
   });
 
@@ -3312,33 +3309,32 @@ describe('Villain range blockers', () => {
 
     expect(grouped(range.heroBlocks.blocked)).toEqual({
       isFlush: ['AhQh', 'Ah5h'],
-      isPair: ['AsAh', 'AhAd', 'AhAc'],
-      isHighCard: ['JsTs', 'JsTh', 'JsTd', 'JsTc'],
-      isFlushDraw: ['AsAh', 'AhAd', 'AhAc', 'JsTh'],
-      isInsideStraightDraw: ['JsTs', 'JsTh', 'JsTd', 'JsTc'],
-      isStraightDraw: ['JsTs', 'JsTh', 'JsTd', 'JsTc'],
+      isPair: ['AcAh', 'AdAh', 'AhAs'],
+      isHighCard: ['JsTs', 'JsTc', 'JsTd', 'JsTh'],
+      isFlushDraw: ['AcAh', 'AdAh', 'AhAs', 'JsTh'],
+      isInsideStraightDraw: ['JsTs', 'JsTc', 'JsTd', 'JsTh'],
+      isStraightDraw: ['JsTs', 'JsTc', 'JsTd', 'JsTh'],
       isComboDraw: ['JsTh']
     });
   });
 
   test('should list a blocked combo under its made hand and every draw it holds on the flop', () => {
     // Board: K♥ 9♥ 4♣, Hand: A♥ J♠
-    const range = villainRangeOf(['AQs', 'JT', 'AA'], ['Kh', '9h', '4c', 'Ah', 'Js']);
-    const blocked = range.heroBlocks.blocked;
+    const blocked = villainRangeOf(['AQs', 'JT', 'AA'], ['Kh', '9h', '4c', 'Ah', 'Js']).heroBlocks.blocked;
 
     expect(blocked.isHighCard).toContain('AhQh');
     expect(blocked.isFlushDraw).toEqual(['AhQh']);
-    expect(blocked.isBackdoorFlushDraw).toEqual(['JsTh', 'AsAh', 'AhAd', 'AhAc']);
-    expect(blocked.isInsideStraightDraw).toEqual(['JsTs', 'JsTh', 'JsTd', 'JsTc']);
-    expect(blocked.isPair).toEqual(['AsAh', 'AhAd', 'AhAc']);
+    expect(blocked.isBackdoorFlushDraw).toEqual(['JsTh', 'AcAh', 'AdAh', 'AhAs']);
+    expect(blocked.isInsideStraightDraw).toEqual(['JsTs', 'JsTc', 'JsTd', 'JsTh']);
+    expect(blocked.isPair).toEqual(['AcAh', 'AdAh', 'AhAs']);
   });
 
   test('should only count villain draws that use a villain card', () => {
-    // Board: 9♠ 8♦ 7♣ 6♥, Hand: A♥ J♠ - A♥A♦ has only the board's open-ender, so no draw of its own
-    const range = villainRangeOf(['AA'], ['9s', '8d', '7c', '6h', 'Ah', 'Js']);
+    // Board: 9♠ 8♦ 7♣ 6♥, Hand: A♥ J♠ - aces have only the board's open-ender, so no draw of their own
+    const blocked = villainRangeOf(['AA'], ['9s', '8d', '7c', '6h', 'Ah', 'Js']).heroBlocks.blocked;
 
-    expect(range.heroBlocks.blocked.isPair).toEqual(['AsAh', 'AhAd', 'AhAc']);
-    expect(range.heroBlocks.blocked.isStraightDraw).toEqual([]);
+    expect(blocked.isPair).toEqual(['AcAh', 'AdAh', 'AhAs']);
+    expect(blocked.isStraightDraw).toEqual([]);
   });
 
   test('should apply the street to villain draws', () => {
@@ -3346,7 +3342,7 @@ describe('Villain range blockers', () => {
     const river = villainRangeOf(['JT', 'AA'], ['Kh', '9h', '4c', '2d', '7s', 'Ah', 'Js']).heroBlocks.blocked;
 
     expect(turn.isBackdoorFlushDraw).toEqual([]);
-    expect(turn.isInsideStraightDraw).toEqual(['JsTs', 'JsTh', 'JsTd', 'JsTc']);
+    expect(turn.isInsideStraightDraw).toEqual(['JsTs', 'JsTc', 'JsTd', 'JsTh']);
     for (const draw of ['isFlushDraw', 'isBackdoorFlushDraw', 'isOpenEndedStraightDraw',
       'isInsideStraightDraw', 'isStraightDraw', 'isComboDraw']) {
       expect(river[draw]).toEqual([]);
@@ -3357,63 +3353,365 @@ describe('Villain range blockers', () => {
     // Board: 9♠ 8♦ 7♣ 2♥, Hand: A♥ J♠ - J♠T♦ makes a jack-high straight
     const range = villainRangeOf(['JsTd', 'AhAd'], ['9s', '8d', '7c', '2h', 'Ah', 'Js']);
 
-    expect(grouped(range.heroBlocks.blocked)).toEqual({ isStraight: ['JsTd'], isPair: ['AhAd'] });
-  });
-
-  test('should expand pairs, suited, offsuit and any-suit shorthand', () => {
-    expect(expand(['QQ'])).toHaveLength(6);
-    expect(expand(['AKs'])).toEqual(['AsKs', 'AhKh', 'AdKd', 'AcKc']);
-    expect(expand(['AKo'])).toHaveLength(12);
-    expect(expand(['AK'])).toHaveLength(16);
-    expect(expand(['KA'])).toHaveLength(16);
-  });
-
-  test('should expand plus shorthand', () => {
-    expect(expand(['QQ+'])).toHaveLength(18);
-    expect(new Set(expand(['ATs+']).map(c => c[0] + c[2]))).toEqual(new Set(['AT', 'AJ', 'AQ', 'AK']));
-    expect(expand(['ATs+'])).toHaveLength(16);
-    expect(expand(['K9o+'])).toHaveLength(48);
+    expect(grouped(range.heroBlocks.blocked)).toEqual({ isStraight: ['JsTd'], isPair: ['AdAh'] });
   });
 
   test('should split a partly blocked shorthand entry into combos', () => {
-    // A♥ is a hole card, so A♥K♥ is blocked by hero; it also holds the board's K♥, so it is not grouped
+    // A♥K♥ holds hero's A♥ and the board's K♥
     const range = villainRangeOf(['AKs']);
 
-    expect(range.allBlocks.unblocked).toEqual(['AsKs', 'AdKd', 'AcKc']);
-    expect(range.heroBlocks.unblocked).toEqual(['AsKs', 'AdKd', 'AcKc']);
-    expect(grouped(range.heroBlocks.blocked)).toEqual({});
-  });
-
-  test('should normalise exact combos and remove duplicates', () => {
-    const combos = expand(['KdAh', 'AhKd', 'QQ', 'QsQh']);
-
-    expect(combos.filter(c => c === 'AhKd')).toHaveLength(1);
-    expect(combos).toHaveLength(7);
+    expect(range.allBlocks.unblocked).toEqual(['AcKc', 'AdKd', 'AsKs']);
+    expect(grouped(range.heroBlocks.blocked)).toEqual({ onBoard: ['AhKh'] });
   });
 
   test('should treat every card as board without hole cards', () => {
     const range = villainRangeOf(['AhKd', 'QcQd'], ['Kh', '8d', '4c', 'Ah', 'Js'], null);
 
-    expect(range.heroBlocks.unblocked).toEqual(['AhKd', 'QdQc']);
+    expect(range.heroBlocks.unblocked).toEqual(['AhKd', 'QcQd']);
     expect(grouped(range.heroBlocks.blocked)).toEqual({});
-    expect(range.boardBlocks.unblocked).toEqual(['QdQc']);
+    expect(range.boardBlocks.unblocked).toEqual(['QcQd']);
+    expect(grouped(range.boardBlocks.blocked)).toEqual({ onBoard: ['AhKd'] });
   });
 
-  test('should attach the same classification to every combination in non-strict mode', () => {
-    const result = evaluateHand(['Kh', '8d', '4c', '2s', 'Ah', 'Js'], false, holeCards, ['AA']);
+  test('should give every combination its own copy in non-strict mode', () => {
+    const result = Object.values(evaluateHand(['Kh', '8d', '4c', '2s', 'Ah', 'Js'], false, holeCards, ['AA']));
 
-    for (const evaluation of Object.values(result)) {
-      expect(grouped(evaluation.villainRange.heroBlocks.blocked)).toEqual({ isPair: ['AsAh', 'AhAd', 'AhAc'] });
+    for (const evaluation of result) {
+      expect(grouped(evaluation.villainRange.heroBlocks.blocked)).toEqual({ isPair: ['AcAh', 'AdAh', 'AhAs'] });
     }
+    result[0].villainRange.heroBlocks.unblocked.push('changed');
+    expect(result[1].villainRange.heroBlocks.unblocked).not.toContain('changed');
+  });
+
+  test('should match classifyRange', () => {
+    const cards = ['Kh', '9h', '4h', '2c', 'Ah', 'Js'];
+
+    expect(classifyRange(cards, holeCards, 'AQs,A5s,AA')).toEqual(villainRangeOf(['AQs', 'A5s', 'AA'], cards));
   });
 
   test.each([
-    ['not an array', 'AK', 'Villain range must be an array'],
-    ['an invalid rank', ['AX'], 'Invalid villain range entry at index 0: "AX"'],
-    ['a suited pair', ['AAs'], 'Invalid villain range entry at index 0: "AAs"'],
-    ['the same card twice', ['AsAs'], 'Invalid villain range entry at index 0: "AsAs"'],
-    ['a non-string entry', ['AK', 5], 'Invalid villain range entry at index 1: "5"']
+    ['not a string or array', 5, 'Range must be an array or a comma-separated string'],
+    ['an invalid rank', ['AX'], 'Invalid range entry at index 0: "AX"'],
+    ['a suited pair', ['AAs'], 'Invalid range entry at index 0: "AAs"'],
+    ['the same card twice', ['AsAs'], 'Invalid range entry at index 0: "AsAs"'],
+    ['a non-string entry', ['AK', 5], 'Invalid range entry at index 1: "5"'],
+    ['an empty entry', 'AA,,KK', 'Invalid range entry at index 1: ""']
   ])('should throw for %s', (_, range, message) => {
     expect(() => evaluateHand([...board, ...holeCards], true, holeCards, range)).toThrow(message);
+  });
+});
+
+describe('parseRange', () => {
+  test.each([
+    ['QQ', 6], ['AKs', 4], ['AKo', 12], ['AK', 16], ['KA', 16], ['QQ+', 18], ['ATs+', 16],
+    ['K9o+', 48], ['AT+', 64], ['KQs-K9s', 16], ['99-66', 24], ['KXs', 48], ['qq', 6], [' AA ', 6]
+  ])('should expand %s to %i combos', (notation, count) => {
+    expect(parseRange(notation)).toHaveLength(count);
+  });
+
+  test('should write combos high rank first with suits ordered c, d, h, s', () => {
+    expect(parseRange('AKs')).toEqual(['AcKc', 'AdKd', 'AhKh', 'AsKs']);
+    expect(parseRange(['KdAh'])).toEqual(['AhKd']);
+    expect(parseRange('QQ').slice(0, 2)).toEqual(['QcQd', 'QcQh']);
+  });
+
+  test('should accept a comma-separated string or an array, keeping order and removing duplicates', () => {
+    const combos = parseRange('AhKd,QQ,KdAh,QcQd');
+
+    expect(parseRange(['AhKd', 'QQ', 'KdAh', 'QcQd'])).toEqual(combos);
+    expect(combos).toHaveLength(7);
+    expect(combos[0]).toBe('AhKd');
+  });
+});
+
+describe('Straight draws by outs', () => {
+  const evaluate5 = (cards, hole = null) => Object.values(evaluateHand(cards, { holeCards: hole }))[0];
+
+  test('should treat a double gutshot as open-ended (8 outs)', () => {
+    // K-J-T-9-7: a Q makes K-high, an 8 makes J-high
+    const evaluation = evaluate5(['Ks', 'Jh', 'Td', '9c', '7h']);
+
+    expect(evaluation.isOpenEndedStraightDraw).toBe(true);
+    expect(evaluation.isInsideStraightDraw).toBe(false);
+    expect(evaluation.keyCards.isOpenEndedStraightDraw).toEqual(['Ks', 'Jh', 'Td', '9c', '7h']);
+  });
+
+  test('should not also call an open-ender with a gap behind it an inside draw', () => {
+    // T-9-8-7-5: a J or a 6 completes it
+    const evaluation = evaluate5(['Ts', '9h', '8d', '7c', '5h']);
+
+    expect(evaluation.isOpenEndedStraightDraw).toBe(true);
+    expect(evaluation.isInsideStraightDraw).toBe(false);
+    expect(evaluation.keyCards.isStraightDraw).toEqual(['Ts', '9h', '8d', '7c']);
+  });
+
+  test('should flag the wheel draw flags only for draws that complete the wheel', () => {
+    expect(evaluate5(['As', '2h', '3d', '4c', '9h']).isInsideStraightDrawWheel).toBe(true);
+    expect(evaluate5(['5s', '4h', '3d', '2c', 'Kh']).isOpenEndedStraightDrawWheel).toBe(true);
+    expect(evaluate5(['9s', '8h', '7d', '6c', '2h']).isOpenEndedStraightDrawWheel).toBe(false);
+    expect(evaluate5(['As', '2h', '3d', '4c', '9h']).keyCards.isInsideStraightDrawWheel).toEqual(['4c', '3d', '2h', 'As']);
+  });
+
+  test('should flag isStraightWheel for A-2-3-4-5 only', () => {
+    expect(evaluate5(['As', '2h', '3d', '4c', '5h']).isStraightWheel).toBe(true);
+    expect(evaluate5(['8s', '7h', '6d', '5c', '4h']).isStraightWheel).toBe(false);
+  });
+});
+
+describe('Pair positions with hole cards', () => {
+  test('should label a pocket pair above the board an over pair, not top pair', () => {
+    const evaluation = evaluateWithHoleCards(['Jd', '8c', '3h'], ['Qs', 'Qh']);
+
+    expect(evaluation.isOverPair).toBe(true);
+    expect(evaluation.isTopPair).toBe(false);
+    expect(evaluation.keyCards.isOverPair).toEqual(['Qs', 'Qh']);
+  });
+
+  test('should label a pocket pair below the board an under pair, not bottom pair', () => {
+    const evaluation = evaluateWithHoleCards(['Jd', '8c', '5h'], ['3s', '3h']);
+
+    expect(evaluation.isUnderPair).toBe(true);
+    expect(evaluation.isBottomPair).toBe(false);
+  });
+
+  test('should label a pocket pair between board cards middle pair', () => {
+    expect(evaluateWithHoleCards(['Kd', '8c', '3h'], ['Ts', 'Th']).isMiddlePair).toBe(true);
+  });
+
+  test('should not set isOverPair without hole cards', () => {
+    expect(Object.values(evaluateHand(['Qs', 'Qh', 'Jd', '8c', '3h']))[0].isOverPair).toBe(false);
+  });
+
+  test.each([
+    [['Kd', '9c', '3h'], ['Ks', '9h'], 'isTopAndMiddlePair'],
+    [['Kd', '9c', '3h'], ['Ks', '3s'], 'isTopAndBottomPair'],
+    [['Kd', '9c', '3h'], ['9h', '3s'], 'isMiddleAndBottomPair'],
+    [['Ad', 'Kc', '9h', '2s'], ['Kh', '2d'], 'isMiddleAndBottomPair'], // the K sits below the A
+    [['Ad', 'Kc', '9h', '2s'], ['Kh', '9d'], null], // two middle board cards: none of the three
+    [['8d', '8c', '3h'], ['Ks', '3s'], null] // the 8s are the board's
+  ])('two pair on %j with %j should be %s', (board, holeCards, expected) => {
+    const evaluation = evaluateWithHoleCards(board, holeCards);
+    const labels = ['isTopAndMiddlePair', 'isTopAndBottomPair', 'isMiddleAndBottomPair'].filter(l => evaluation[l]);
+
+    expect(evaluation.isTwoPair).toBe(true);
+    expect(labels).toEqual(expected ? [expected] : []);
+  });
+});
+
+describe('usesHoleCards', () => {
+  test.each([
+    [['Kd', '8c', '3h'], ['As', 'Kh'], true],   // top pair
+    [['8d', '8c', '3h'], ['As', 'Kh'], false],  // the board's pair
+    [['Ah', 'Kh', '9h', '4h', '2h'], ['Qs', 'Jd'], false], // the board's flush
+    [['Kh', '9h', '4h', '2c'], ['Ah', '7h'], true], // hero's flush
+    [['Kd', '8c', '3h'], ['As', 'Qh'], true] // ace high
+  ])('board %j with %j should be %s', (board, holeCards, expected) => {
+    expect(evaluateWithHoleCards(board, holeCards).usesHoleCards).toBe(expected);
+  });
+
+  test('should be null without hole cards', () => {
+    expect(Object.values(evaluateHand(['As', 'Kh', 'Kd', '8c', '3h']))[0].usesHoleCards).toBeNull();
+  });
+});
+
+describe('Street option', () => {
+  test('should drop every draw when the street is the river', () => {
+    const evaluation = Object.values(evaluateHand(['Ah', 'Js', '4h', '9h', '7h'], { holeCards: ['Ah', 'Js'], street: 'river' }))[0];
+
+    expect(evaluation.isFlushDraw).toBe(false);
+  });
+
+  test('should drop backdoor flush draws on the turn', () => {
+    const cards = ['Kd', '7s', '2s', 'Ad', 'Qd'];
+
+    expect(Object.values(evaluateHand(cards, { holeCards: ['Ad', 'Qd'] }))[0].isBackdoorFlushDraw).toBe(true);
+    expect(Object.values(evaluateHand(cards, { holeCards: ['Ad', 'Qd'], street: 'turn' }))[0].isBackdoorFlushDraw).toBe(false);
+  });
+
+  test('should reject an unknown street', () => {
+    expect(() => evaluateHand(['Ah', 'Js', '4h', '9h', '7h'], { street: 'preflop' }))
+      .toThrow('Street must be \'flop\', \'turn\' or \'river\', received "preflop"');
+  });
+});
+
+describe('Options object', () => {
+  test('should match the positional arguments', () => {
+    const cards = ['4h', '9h', '7h', '8s', 'Ah', 'Js'];
+
+    expect(evaluateHand(cards, { strict: false, holeCards: ['Ah', 'Js'] })).toEqual(evaluateHand(cards, false, ['Ah', 'Js']));
+    expect(new HandEvaluator(cards, { holeCards: ['Ah', 'Js'] }).holeCards).toEqual(['Ah', 'Js']);
+  });
+});
+
+describe('Non-strict mode drops draws the full hand has made', () => {
+  test('should not report flush draws once a flush is made', () => {
+    const result = evaluateHand(['Ah', 'Kh', '9h', '4h', '2h', 'Qc'], false, ['Ah', 'Kh']);
+
+    expect(Object.values(result).some(e => e.isFlushDraw || e.isComboDraw)).toBe(false);
+  });
+
+  test('should not report straight draws once a straight is made', () => {
+    const result = evaluateHand(['9s', '7d', '6c', '2h', '8h', '5c'], false, ['8h', '5c']);
+
+    expect(Object.values(result).some(e => e.isStraightDraw)).toBe(false);
+  });
+});
+
+describe('evaluate', () => {
+  test('should return the best hand as one flat object', () => {
+    const result = evaluate(['Kd', '8c', '3h', 'As', 'Kh'], { holeCards: ['As', 'Kh'] });
+
+    expect(result.hand).toEqual(['As', 'Kd', 'Kh', '8c', '3h']);
+    expect(result.category).toBe('isPair');
+    expect(result.strength).toBe(2);
+    expect(result.street).toBe('flop');
+    expect(result.isTopPair).toBe(true);
+    expect(result.usesHoleCards).toBe(true);
+    expect(result.keyCards.isPair).toEqual(['Kd', 'Kh']);
+  });
+
+  test('should infer the street from the card count', () => {
+    expect(evaluate(['Kd', '8c', '3h', '2s', 'As', 'Kh']).street).toBe('turn');
+    expect(evaluate(['Kd', '8c', '3h', '2s', '7c', 'As', 'Kh']).street).toBe('river');
+  });
+
+  test('should give ranks that order hands the same way as compareHands', () => {
+    const ranks = '23456789TJQKA';
+    const deck = [];
+    for (const r of ranks) for (const s of 'shdc') deck.push(r + s);
+    const compareRanks = (a, b) => {
+      for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        if ((a[i] || 0) !== (b[i] || 0)) return Math.sign((a[i] || 0) - (b[i] || 0));
+      }
+      return 0;
+    };
+    let seed = 7;
+    const random = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let i = 0; i < 500; i++) {
+      const shuffled = [...deck].sort(() => random() - 0.5);
+      const board = shuffled.slice(0, 3 + (i % 3));
+      const handA = shuffled.slice(10, 12);
+      const handB = shuffled.slice(12, 14);
+      const ours = compareRanks(evaluate([...board, ...handA]).rank, evaluate([...board, ...handB]).rank);
+
+      expect({ board, handA, handB, result: ours }).toEqual({ board, handA, handB, result: compareHands(handA, handB, board) });
+    }
+  });
+});
+
+describe('compareHands', () => {
+  test.each([
+    [['Ah', 'Kd'], ['Qs', 'Qc'], ['Ks', '7h', '2d'], 1],
+    [['Qs', 'Qc'], ['Ah', 'Kd'], ['Ks', '7h', '2d'], -1],
+    [['Ah', '2d'], ['As', '3c'], ['Ks', 'Kh', 'Qd', 'Qc', 'Jh'], 0],
+    [['2c', '6d'], ['Ah', 'Kc'], ['3s', '4h', '5d', '9c', 'Ts'], 1] // six-high straight beats ace high
+  ])('%j vs %j on %j should be %i', (handA, handB, board, expected) => {
+    expect(compareHands(handA, handB, board)).toBe(expected);
+  });
+
+  test('should rank the wheel below a six-high straight', () => {
+    expect(compareHands(['Ah', '9d'], ['6c', '9s'], ['2c', '3d', '4h', '5s', 'Kd'])).toBe(-1);
+  });
+
+  test('should reject a card used twice', () => {
+    expect(() => compareHands(['Ah', 'Kd'], ['Ah', 'Qc'], ['2c', '3d', '4h'])).toThrow('Duplicate card found: "Ah"');
+  });
+
+  test('should reject a hand that is not 5 to 7 cards with the board', () => {
+    expect(() => compareHands(['Ah', 'Kd'], ['Qs', 'Qc'], ['2c'])).toThrow('handA plus the board must be 5 to 7 cards, received 3');
+  });
+});
+
+describe('equity', () => {
+  test('should count every river runout exactly', async () => {
+    const result = await equity(['Ah', 'Kd'], 'QsQc', ['Ks', '7h', '2d', '3c', '9s']);
+
+    expect(result).toEqual({ win: 1, tie: 0, lose: 0, equity: 1 });
+  });
+
+  test('should enumerate turn runouts and give equity between 0 and 1', async () => {
+    const result = await equity('AhJs', 'KK', ['4h', '9h', '7h', '8s']);
+
+    expect(result.win + result.tie + result.lose).toBeGreaterThan(0);
+    expect(result.equity).toBeGreaterThan(0.3);
+    expect(result.equity).toBeLessThan(0.7);
+  });
+
+  test('should skip villain combos that clash with known cards', async () => {
+    const withBlocked = await equity(['Ah', 'Js'], ['AhKd', 'KsKd'], ['4h', '9h', '7h', '8s']);
+    const without = await equity(['Ah', 'Js'], ['KsKd'], ['4h', '9h', '7h', '8s']);
+
+    expect(withBlocked).toEqual(without);
+  });
+
+  test('should reject a board that is not 0, 3, 4 or 5 cards', async () => {
+    await expect(equity('AA', 'KK', ['2c', '3d'])).rejects.toThrow('Board must be 0, 3, 4 or 5 cards, received 2');
+  });
+});
+
+describe('Draws match a reference by outs', () => {
+  // An independent reference: a straight draw's outs are the ranks that complete five in a row
+  // using a rank the board does not have; a flush draw is four of a suit including a hole card.
+  test('should agree on random hands in non-strict mode', () => {
+    const ranks = '23456789TJQKA';
+    const deck = [];
+    for (const r of ranks) for (const s of 'shdc') deck.push(r + s);
+    const value = c => ranks.indexOf(c[0]) + 2;
+    const straights = [[14, 2, 3, 4, 5]];
+    for (let high = 6; high <= 14; high++) straights.push([high - 4, high - 3, high - 2, high - 1, high]);
+    const madeLevel = cards => {
+      const suits = {};
+      const counts = {};
+      cards.forEach(c => { suits[c[1]] = (suits[c[1]] || 0) + 1; counts[c[0]] = (counts[c[0]] || 0) + 1; });
+      const shape = Object.values(counts).sort((a, b) => b - a);
+      if (Object.values(suits).some(n => n >= 5) || shape[0] >= 4 || (shape[0] === 3 && shape[1] >= 2)) return 6;
+      const values = new Set(cards.map(value));
+      return straights.some(s => s.every(r => values.has(r))) ? 5 : 0;
+    };
+
+    let seed = 99;
+    const random = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let i = 0; i < 600; i++) {
+      const size = 5 + (i % 3);
+      const pool = i % 2 ? deck : deck.filter(c => 'AKQJT98'.includes(c[0]) || c[1] === 'h');
+      const cards = [...pool].sort(() => random() - 0.5).slice(0, size);
+      const hole = cards.slice(size - 2);
+      const boardRanks = new Set(cards.slice(0, size - 2).map(value));
+      const handLevel = madeLevel(cards);
+      for (const [key, evaluation] of Object.entries(evaluateHand(cards, false, hole))) {
+        const five = key.split(', ');
+        const present = new Set(five.map(value));
+        const outs = new Set();
+        if (madeLevel(five) < 5) {
+          for (const s of straights) {
+            const have = s.filter(r => present.has(r));
+            if (have.length === 4 && have.some(r => !boardRanks.has(r))) outs.add(s.find(r => !present.has(r)));
+          }
+        }
+        const suits = {};
+        five.forEach(c => { suits[c[1]] = (suits[c[1]] || 0) + 1; });
+        const four = Object.keys(suits).find(s => suits[s] === 4);
+        const three = Object.keys(suits).find(s => suits[s] === 3);
+        const flush = Object.values(suits).includes(5);
+        let flushDraw = !flush && !!four && five.some(c => c[1] === four && hole.includes(c));
+        let backdoor = !flush && !four && !!three && five.some(c => c[1] === three && hole.includes(c));
+        let straightOuts = outs.size;
+        if (handLevel >= 5) straightOuts = 0;
+        if (handLevel >= 6) flushDraw = backdoor = false;
+        if (size >= 6) backdoor = false;
+        if (size >= 7) { straightOuts = 0; flushDraw = false; }
+        const expected = {
+          isStraightDraw: straightOuts > 0,
+          isOpenEndedStraightDraw: straightOuts >= 2,
+          isInsideStraightDraw: straightOuts === 1,
+          isFlushDraw: flushDraw,
+          isBackdoorFlushDraw: backdoor,
+          isComboDraw: flushDraw && straightOuts > 0
+        };
+        const actual = Object.fromEntries(Object.keys(expected).map(flag => [flag, evaluation[flag]]));
+
+        expect({ cards, five: key, ...actual }).toEqual({ cards, five: key, ...expected });
+      }
+    }
   });
 });

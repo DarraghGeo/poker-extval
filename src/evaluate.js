@@ -74,17 +74,35 @@ function mergeDraws(best, analysed, ctx) {
 }
 
 /**
+ * In non-strict mode every combination is returned on its own, but a draw to a hand the full
+ * hand has already made is not a draw: drops straight draws from every combination once any
+ * combination makes a straight or better, and flush draws once any makes a flush or better.
+ *
+ * @param {Object[]} analysed - Every combination, from analyzeFlags (modified in place)
+ */
+function dropMadeDraws(analysed) {
+  const strongest = Math.max(...analysed.map(hand => strengthOf(hand.flags)));
+  for (const { flags } of analysed) {
+    if (strongest >= HAND_STRENGTH.isStraight) STRAIGHT_DRAWS.forEach(draw => { flags[draw] = false; });
+    if (strongest >= HAND_STRENGTH.isFlush) FLUSH_DRAWS.forEach(draw => { flags[draw] = false; });
+    flags.isComboDraw = flags.isFlushDraw && flags.isStraightDraw;
+  }
+}
+
+/**
  * Evaluates the hand. Inputs must already be validated.
  *
  * @param {string[]} cards - 5 or more cards
  * @param {boolean} strict - Strict mode
  * @param {string[]|null} holeCards - The player's hole cards, or null
+ * @param {string|null} [street=null] - 'flop', 'turn' or 'river'; inferred from the card count when null
  * @returns {Object<string, Object>} Evaluations keyed by 5-card hand
  */
-function evaluateCards(cards, strict, holeCards) {
-  const ctx = buildContext(cards, holeCards);
+function evaluateCards(cards, strict, holeCards, street = null) {
+  const ctx = buildContext(cards, holeCards, street);
   const fives = cards.length === 5 ? [cards] : combinations(cards, 5);
   const analysed = fives.map(five => analyzeFlags(five, ctx, strict));
+  if (!strict) dropMadeDraws(analysed);
   if (!strict || fives.length === 1) {
     const result = {};
     fives.forEach((five, i) => { result[formatHandKey(five)] = toEvaluation(analysed[i], ctx); });
@@ -100,4 +118,16 @@ function evaluateCards(cards, strict, holeCards) {
   return { [formatHandKey(fives[bestIndex])]: best };
 }
 
-module.exports = { evaluateCards, compareAnalysed };
+/**
+ * A comparable rank for five cards: [strength, ...tiebreak ranks]. Compare element by element;
+ * the higher array is the stronger hand.
+ *
+ * @param {string[]} five - Five cards
+ * @returns {number[]} The rank
+ */
+function rankFive(five) {
+  const analysed = analyzeFlags(five, buildContext(five, null), true);
+  return [strengthOf(analysed.flags), ...tiebreakRanks(analysed)];
+}
+
+module.exports = { evaluateCards, compareAnalysed, rankFive };

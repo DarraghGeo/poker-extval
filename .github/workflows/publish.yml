@@ -1,6 +1,7 @@
 name: Publish to npm
 
-# Publishes the package on every push to main, bumping the version as part of the release.
+# Publishes the package when a push to main changes its code or package.json, bumping the version
+# as part of the release. Pushes that only change docs, tests or workflows do not publish.
 # - If the version in package.json is not on npm yet (e.g. a manual minor/major bump), it is published as is.
 # - Otherwise the patch version is bumped and committed back to main, then published.
 # Each release is tagged v<version>. Commits pushed by this workflow use GITHUB_TOKEN, so they
@@ -13,6 +14,11 @@ name: Publish to npm
 on:
   push:
     branches: [main]
+    paths:
+      - evaluator.js
+      - index.d.ts
+      - src/**
+      - package.json
   workflow_dispatch: # allows a manual run from the Actions tab if a push did not trigger one
 
 permissions:
@@ -27,9 +33,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org

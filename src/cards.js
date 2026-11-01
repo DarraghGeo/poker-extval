@@ -91,13 +91,30 @@ function validateCards(cards) {
   if (cards.length < 5) {
     throw new Error(`Expected at least 5 cards, received ${cards.length}`);
   }
+  validateCardList(cards);
+}
+
+/** True for a well-formed card such as 'Ah' or 'Td'. */
+function isCard(card) {
+  return typeof card === 'string' && card.length === 2 && RANKS.includes(card[0]) && SUITS.includes(card[1]);
+}
+
+/**
+ * Validates every card in a list of any length: each a string with a valid rank and suit, and
+ * no card twice.
+ *
+ * @param {string[]} cards - Cards to validate
+ * @param {string} [label='Card'] - What to call a card in error messages
+ * @throws {Error} If a card is not a string, is malformed, has an invalid rank or suit, or repeats
+ */
+function validateCardList(cards, label = 'Card') {
   const seen = new Set();
   cards.forEach((card, i) => {
     if (typeof card !== 'string') {
-      throw new Error(`Card at index ${i} must be a string`);
+      throw new Error(`${label} at index ${i} must be a string`);
     }
     if (card.length < 2) {
-      throw new Error(`Card at index ${i} has invalid format: "${card}"`);
+      throw new Error(`${label} at index ${i} has invalid format: "${card}"`);
     }
     if (seen.has(card)) {
       throw new Error(`Duplicate card found: "${card}"`);
@@ -106,10 +123,10 @@ function validateCards(cards) {
     const rank = card.slice(0, -1);
     const suit = card.slice(-1);
     if (rank.length !== 1 || !RANKS.includes(rank)) {
-      throw new Error(`Card at index ${i} has invalid rank: "${rank}"`);
+      throw new Error(`${label} at index ${i} has invalid rank: "${rank}"`);
     }
     if (!SUITS.includes(suit)) {
-      throw new Error(`Card at index ${i} has invalid suit: "${suit}"`);
+      throw new Error(`${label} at index ${i} has invalid suit: "${suit}"`);
     }
   });
 }
@@ -156,6 +173,8 @@ module.exports = {
   sortDesc,
   combinations,
   formatHandKey,
+  isCard,
   validateCards,
+  validateCardList,
   validateHoleCards
 };

@@ -1,0 +1,30 @@
+name: Test
+
+# Runs the tests on every push and pull request, on each supported Node version: the minimums
+# (require() of ES modules without a warning, used to load poker-rangeman, arrived in 20.19 and
+# 22.13) and the latest.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20.19.0', '22.13.0', '24']
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - run: npm ci
+
+      - run: npm test

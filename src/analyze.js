@@ -9,7 +9,7 @@
  * @copyright Copyright (c) 2025 Darragh Geoghegan
  */
 
-const { value, wheelValue, sortDesc } = require('./cards');
+const { RANK_VALUES, value, wheelValue, sortDesc } = require('./cards');
 const {
   HAND_STRENGTH,
   MADE_HANDS,
@@ -29,9 +29,10 @@ const HOLE_CARD_CATEGORY_SET = new Set(HOLE_CARD_CATEGORIES);
  *
  * @param {string[]} fullHand - Every card passed in, in input order
  * @param {string[]|null} holeCards - The player's two hole cards, or null
- * @returns {Object} The context used by analyzeFive
+ * @param {string|null} [street=null] - 'flop', 'turn' or 'river'; inferred from the card count when null
+ * @returns {Object} The context used by analyzeFlags
  */
-function buildContext(fullHand, holeCards) {
+function buildContext(fullHand, holeCards, street = null) {
   const holeSet = new Set(holeCards || []);
   const board = fullHand.filter(c => !holeSet.has(c));
   return {
@@ -42,8 +43,20 @@ function buildContext(fullHand, holeCards) {
     boardRanks: new Set(board.map(c => c[0])),
     boardValues: board.map(value),
     cardCount: fullHand.length,
+    street: street || streetFor(fullHand.length),
     holeClassification: classifyHoleCards(holeCards, board)
   };
+}
+
+/**
+ * The street implied by the number of cards: 5 is the flop, 6 the turn, 7 or more the river.
+ *
+ * @param {number} cardCount - Cards in the full hand
+ * @returns {string} 'flop', 'turn' or 'river'
+ */
+function streetFor(cardCount) {
+  if (cardCount <= 5) return 'flop';
+  return cardCount === 6 ? 'turn' : 'river';
 }
 
 /**
@@ -73,17 +86,28 @@ function classifyHoleCards(holeCards, board) {
  * Classifies a paired (or tripled) rank against the whole board, including board cards outside
  * the current 5-card combination.
  *
+ * A rank on the board is 'top', 'middle' or 'bottom' by where it sits among the board ranks. A
+ * pocket pair the board does not have is 'over' (above every board card), 'under' (below every
+ * board card) or 'middle' (in between).
+ *
  * @param {string|null} rank - The rank to classify
  * @param {Object} ctx - The hand context
- * @returns {string|null} 'top', 'middle', 'bottom', 'none' (no hole card has the rank, so it
- *   belongs to the board), or null without hole cards
+ * @returns {string|null} 'over', 'top', 'middle', 'bottom', 'under', 'none' (no hole card has
+ *   the rank, so it belongs to the board), or null without hole cards
  */
 function boardPosition(rank, ctx) {
   if (!ctx.holeCards) return null;
   if (!rank || !ctx.holeCards.some(c => c[0] === rank)) return 'none';
-  const rankValue = value(rank + 's');
-  if (rankValue >= Math.max(...ctx.boardValues)) return 'top';
-  if (rankValue <= Math.min(...ctx.boardValues)) return 'bottom';
+  const rankValue = RANK_VALUES[rank];
+  const highest = Math.max(...ctx.boardValues);
+  const lowest = Math.min(...ctx.boardValues);
+  if (ctx.boardRanks.has(rank)) {
+    if (rankValue === highest) return 'top';
+    if (rankValue === lowest) return 'bottom';
+    return 'middle';
+  }
+  if (rankValue > highest) return 'over';
+  if (rankValue < lowest) return 'under';
   return 'middle';
 }
 
@@ -121,66 +145,65 @@ function describeFive(five) {
   };
 }
 
+/** Every straight as its five ranks, the wheel (A-2-3-4-5) first. */
+const STRAIGHTS = ['A5432', '65432', '76543', '87654', '98765', 'T9876', 'JT987', 'QJT98', 'KQJT9', 'AKQJT'];
+
 /**
- * Finds 4 cards of distinct, rank-adjacent ranks whose rank span is one of the given distances.
- * Paired cards count once (a hole card is preferred as the representative of its rank).
- * One-ended draws (A-K-Q-J and A-2-3-4) count as span 4, the same as an inside draw, since only
- * one rank completes them. Wheel windows must contain the Ace. With hole cards, a window whose
- * ranks are all already on the board is skipped.
+ * Works out the hand's straight draws by their outs. A straight completes when one more rank
+ * gives five in a row; the ranks that do it are the outs. With hole cards, a completion only
+ * counts when its four ranks include one the board does not have, so the draw is the player's.
+ *
+ * Two or more out ranks is open-ended (8 outs), which includes double gutshots; exactly one is an
+ * inside draw (4 outs), which includes one-ended draws such as A-K-Q-J and A-2-3-4. Paired cards
+ * count once. Cached on the shape.
  *
  * @param {Object} shape - From describeFive
  * @param {Object} ctx - The hand context
- * @param {number[]} distances - Accepted spans (3 = open-ended, 4 = inside)
- * @param {boolean} wheel - Rank the Ace low
- * @returns {string[]|null} The 4 cards, high to low, or null
+ * @returns {{outs: string[], completions: Array<{out: string, ranks: string[], wheel: boolean}>}}
  */
-function findStraightDrawWindow(shape, ctx, distances, wheel) {
-  const rankValue = wheel ? wheelValue : value;
-  const distinct = distinctRanks(shape, ctx, wheel);
-  for (let i = 0; i + 4 <= distinct.length; i++) {
-    const window = distinct.slice(i, i + 4);
-    const hasAce = window.some(c => c[0] === 'A');
-    if (wheel && !hasAce) continue;
-    let distance = rankValue(window[0]) - rankValue(window[3]);
-    if (distance === 3 && hasAce) distance = 4;
-    if (distances.includes(distance) && addsRankToBoard(window, ctx)) return window;
+function straightDraws(shape, ctx) {
+  if (shape.straightDraws) return shape.straightDraws;
+  const completions = [];
+  for (const straight of STRAIGHTS) {
+    const present = straight.split('').filter(rank => shape.rankCounts[rank]);
+    if (present.length !== 4) continue;
+    if (ctx.holeCards && present.every(rank => ctx.boardRanks.has(rank))) continue;
+    completions.push({ out: straight.split('').find(rank => !shape.rankCounts[rank]), ranks: present, wheel: straight === 'A5432' });
   }
-  return null;
+  const outs = [...new Set(completions.map(c => c.out))];
+  return (shape.straightDraws = { outs, completions });
 }
 
 /**
- * One card per rank, high to low, preferring a hole card as the representative of its rank.
- * Cached on the shape per ranking.
+ * The cards behind a straight draw. For each out, the highest straight it completes counts; the
+ * key cards are one card for every rank those straights use (a hole card where the hand has two
+ * of that rank), high to low, with the Ace last when every one is the wheel. A-K-Q-J-9 needs a
+ * T for A-K-Q-J-T, so its key cards are A-K-Q-J; a double gutshot such as K-J-T-9-7 uses all five.
+ *
+ * @param {Object} shape - From describeFive
+ * @param {Object} ctx - The hand context
+ * @param {boolean} [wheelOnly=false] - Only the completions that make the wheel
+ * @returns {string[]} The cards
  */
-function distinctRanks(shape, ctx, wheel) {
-  const cacheKey = wheel ? 'distinctWheel' : 'distinctStd';
-  if (shape[cacheKey]) return shape[cacheKey];
-  const rankValue = wheel ? wheelValue : value;
-  const distinct = [];
-  for (const card of wheel ? shape.wheel : shape.std) {
-    const last = distinct[distinct.length - 1];
-    if (last && rankValue(last) === rankValue(card)) {
-      if (ctx.holeSet.has(card)) distinct[distinct.length - 1] = card;
-      continue;
-    }
-    distinct.push(card);
+function straightDrawCards(shape, ctx, wheelOnly = false) {
+  const highestByOut = new Map();
+  // STRAIGHTS runs low to high, so the last completion for an out is its highest straight
+  for (const completion of straightDraws(shape, ctx).completions) {
+    if (!wheelOnly || completion.wheel) highestByOut.set(completion.out, completion);
   }
-  return (shape[cacheKey] = distinct);
-}
-
-/** The draw window for the given spans, preferring a standard draw over a wheel draw. */
-function straightDrawCards(shape, ctx, distances) {
-  return findStraightDrawWindow(shape, ctx, distances, false) || findStraightDrawWindow(shape, ctx, distances, true) || [];
+  const completions = [...highestByOut.values()];
+  const ranks = new Set(completions.flatMap(c => c.ranks));
+  const cards = [...ranks].map(rank => {
+    const ofRank = shape.std.filter(c => c[0] === rank);
+    return ofRank.find(c => ctx.holeSet.has(c)) || ofRank[0];
+  });
+  const allWheel = completions.length > 0 && completions.every(c => c.wheel);
+  return sortDesc(cards, allWheel ? wheelValue : value);
 }
 
 /** True without hole cards, or when one of the cards is a hole card. */
 function usesHoleCard(cards, ctx) {
   return !ctx.holeCards || cards.some(c => ctx.holeSet.has(c));
-}
-
-/** True without hole cards, or when one of the cards has a rank the board does not have. */
-function addsRankToBoard(cards, ctx) {
-  return !ctx.holeCards || cards.some(c => !ctx.boardRanks.has(c[0]));
 }
 
 /** The five cards of a made straight, high to low (Ace last for a wheel). */
@@ -220,13 +243,17 @@ function computeFlags(shape, ctx) {
   const top = std[0][0];
   const bottom = std[4][0];
   const pairPosition = f.isPair ? boardPosition(shape.rankWithCount(2), ctx) : null;
+  f.isOverPair = f.isPair && pairPosition === 'over';
   f.isTopPair = f.isPair && (pairPosition !== null ? pairPosition === 'top' : rankCounts[top] === 2);
   f.isMiddlePair = f.isPair && (pairPosition !== null ? pairPosition === 'middle' : ranks.length === 4 && (ranks[1].count === 2 || ranks[2].count === 2));
   f.isBottomPair = f.isPair && (pairPosition !== null ? pairPosition === 'bottom' : rankCounts[bottom] === 2);
 
-  f.isTopAndMiddlePair = f.isTwoPair && ranks[0].count === 2 && ranks[1].count === 2;
-  f.isTopAndBottomPair = f.isTwoPair && ranks[0].count === 2 && ranks[ranks.length - 1].count === 2;
-  f.isMiddleAndBottomPair = f.isTwoPair && ranks.length === 3 && ranks[1].count === 2 && ranks[2].count === 2;
+  // Two pair with hole cards: both pairs must use a hole card, judged against the board
+  const pairRanks = ranks.filter(r => r.count === 2).map(r => r.rank);
+  const twoPairPositions = f.isTwoPair && ctx.holeCards ? pairRanks.map(rank => boardPosition(rank, ctx)).join() : null;
+  f.isTopAndMiddlePair = f.isTwoPair && (twoPairPositions !== null ? twoPairPositions === 'top,middle' : ranks[0].count === 2 && ranks[1].count === 2);
+  f.isTopAndBottomPair = f.isTwoPair && (twoPairPositions !== null ? twoPairPositions === 'top,bottom' : ranks[0].count === 2 && ranks[ranks.length - 1].count === 2);
+  f.isMiddleAndBottomPair = f.isTwoPair && (twoPairPositions !== null ? twoPairPositions === 'middle,bottom' : ranks.length === 3 && ranks[1].count === 2 && ranks[2].count === 2);
 
   const tripsPosition = f.isThreeOfAKind ? boardPosition(shape.rankWithCount(3), ctx) : null;
   f.isTopThreeOfAKind = f.isThreeOfAKind && (tripsPosition !== null ? tripsPosition === 'top' : rankCounts[top] === 3);
@@ -238,18 +265,21 @@ function computeFlags(shape, ctx) {
   f.isFlushDraw = !f.isFlush && suitedDraw(4);
   f.isBackdoorFlushDraw = !f.isFlush && !f.isFlushDraw && suitedDraw(3);
 
-  // Straight draws: none once a straight is made
-  f.isOpenEndedStraightDrawWheel = !f.isStraightWheel && findStraightDrawWindow(shape, ctx, [3], true) !== null;
-  f.isInsideStraightDrawWheel = !f.isStraightWheel && findStraightDrawWindow(shape, ctx, [4], true) !== null;
-  f.isOpenEndedStraightDraw = !f.isStraight && (findStraightDrawWindow(shape, ctx, [3], false) !== null || f.isOpenEndedStraightDrawWheel);
-  f.isInsideStraightDraw = !f.isStraight && (findStraightDrawWindow(shape, ctx, [4], false) !== null || f.isInsideStraightDrawWheel);
-  f.isStraightDraw = f.isOpenEndedStraightDraw || f.isInsideStraightDraw;
+  // Straight draws by outs (none once a straight is made): two or more out ranks is open-ended,
+  // one is inside. The wheel flags mark draws where one of the completions is A-2-3-4-5.
+  const draws = f.isStraight ? { outs: [], completions: [] } : straightDraws(shape, ctx);
+  const drawsToWheel = draws.completions.some(c => c.wheel);
+  f.isOpenEndedStraightDraw = draws.outs.length >= 2;
+  f.isInsideStraightDraw = draws.outs.length === 1;
+  f.isStraightDraw = draws.outs.length > 0;
+  f.isOpenEndedStraightDrawWheel = f.isOpenEndedStraightDraw && drawsToWheel;
+  f.isInsideStraightDrawWheel = f.isInsideStraightDraw && drawsToWheel;
   f.isComboDraw = f.isFlushDraw && f.isStraightDraw;
 
   // The street limits which draws can still complete: no backdoors on the turn, nothing on the river
-  if (ctx.cardCount >= 7) {
+  if (ctx.street === 'river') {
     for (const draw of DRAWS) f[draw] = false;
-  } else if (ctx.cardCount === 6) {
+  } else if (ctx.street === 'turn') {
     f.isBackdoorFlushDraw = false;
   }
 
@@ -275,14 +305,10 @@ function computeFlags(shape, ctx) {
  */
 function isUnderPair(shape, ctx) {
   const pairRank = shape.rankWithCount(2);
-  if (ctx.holeCards) {
-    const [first, second] = ctx.holeCards;
-    if (second[0] !== first[0] || pairRank !== first[0]) return false;
-    return ctx.boardValues.every(v => v > value(first));
-  }
+  if (ctx.holeCards) return boardPosition(pairRank, ctx) === 'under';
   if (ctx.cardCount < 6) return false;
   const others = ctx.fullHand.filter(c => c[0] !== pairRank).map(value);
-  return value(pairRank + 's') < Math.min(...others);
+  return RANK_VALUES[pairRank] < Math.min(...others);
 }
 
 /**
@@ -345,14 +371,15 @@ function computeKeyCards(f, shape, ctx) {
     isBottomThreeOfAKind: tripsCards,
     isFlushDraw: flushDrawCards,
     isBackdoorFlushDraw: () => shape.cardsOfSuit(shape.suitWithCount(3)),
-    isOpenEndedStraightDraw: () => straightDrawCards(shape, ctx, [3]),
-    isInsideStraightDraw: () => straightDrawCards(shape, ctx, [4]),
-    isStraightDraw: () => straightDrawCards(shape, ctx, [3, 4]),
+    isOpenEndedStraightDraw: () => straightDrawCards(shape, ctx),
+    isInsideStraightDraw: () => straightDrawCards(shape, ctx),
+    isStraightDraw: () => straightDrawCards(shape, ctx),
     isStraightWheel: () => straightCards(shape),
-    isOpenEndedStraightDrawWheel: () => straightDrawCards(shape, ctx, [3]),
-    isInsideStraightDrawWheel: () => straightDrawCards(shape, ctx, [4]),
-    isComboDraw: () => sortDesc([...new Set([...flushDrawCards(), ...straightDrawCards(shape, ctx, [3, 4])])]),
+    isOpenEndedStraightDrawWheel: () => straightDrawCards(shape, ctx, true),
+    isInsideStraightDrawWheel: () => straightDrawCards(shape, ctx, true),
+    isComboDraw: () => sortDesc([...new Set([...flushDrawCards(), ...straightDrawCards(shape, ctx)])]),
     isUnderPair: pairCards,
+    isOverPair: pairCards,
     isOvercard: () => sortDesc(ctx.holeCards.filter((c, i) => ctx.holeClassification[i] === 'over')),
     isHighCard: () => []
   };
@@ -417,7 +444,25 @@ function toEvaluation({ shape, flags }, ctx) {
   for (const flag of ALL_FLAGS) evaluation[flag] = flags[flag];
   evaluation.keyCards = computeKeyCards(flags, shape, ctx);
   evaluation.kickerCards = computeKickerCards(flags, evaluation.keyCards, shape, ctx);
+  evaluation.usesHoleCards = usesHoleCards(evaluation, shape, ctx);
   return evaluation;
+}
+
+/**
+ * Whether the strongest made hand uses a hole card: one of its key cards (or, for high card, one
+ * of the five cards) is a hole card. False means the player is playing the board, e.g. A-K on
+ * 8-8-3 has a pair, but it is the board's.
+ *
+ * @param {Object} evaluation - Flags and keyCards
+ * @param {Object} shape - From describeFive
+ * @param {Object} ctx - The hand context
+ * @returns {boolean|null} null without hole cards
+ */
+function usesHoleCards(evaluation, shape, ctx) {
+  if (!ctx.holeCards) return null;
+  const hand = MADE_HANDS.find(h => evaluation[h]);
+  const cards = hand === 'isHighCard' ? shape.std : evaluation.keyCards[hand];
+  return cards.some(c => ctx.holeSet.has(c));
 }
 
 /**
@@ -433,10 +478,8 @@ function tiebreakRanks({ shape, flags }) {
     return [flags.isStraightWheel ? 4 : value(shape.std[0])];
   }
   return [...shape.ranks]
-    .sort((a, b) => b.count - a.count || RANK_VALUE_OF[b.rank] - RANK_VALUE_OF[a.rank])
-    .flatMap(r => Array(r.count).fill(RANK_VALUE_OF[r.rank]));
+    .sort((a, b) => b.count - a.count || RANK_VALUES[b.rank] - RANK_VALUES[a.rank])
+    .flatMap(r => Array(r.count).fill(RANK_VALUES[r.rank]));
 }
 
-const RANK_VALUE_OF = Object.fromEntries('AKQJT98765432'.split('').map((rank, i) => [rank, 13 - i]));
-
-module.exports = { analyzeFlags, toEvaluation, buildContext, strengthOf, tiebreakRanks };
+module.exports = { analyzeFlags, toEvaluation, buildContext, strengthOf, tiebreakRanks, streetFor };

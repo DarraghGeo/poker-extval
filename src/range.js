@@ -1,84 +1,103 @@
 /**
- * Villain range blockers: which villain combos the known cards rule out, and what the blocked
- * combos would have made.
+ * Villain ranges: parsing (via poker-rangeman) and blocker classification.
  *
  * @license MIT
  * @copyright Copyright (c) 2025 Darragh Geoghegan
  */
 
-const { RANKS, SUITS } = require('./cards');
 const { MADE_HANDS, VILLAIN_DRAWS } = require('./flags');
 
+let RangeManager = null;
+
 /**
- * Expands a villain range into exact two-card combos, in input order and without duplicates.
- * Each combo is written high rank first, with suits ordered s, h, d, c for pairs (e.g. 'AhKd', 'QsQh').
+ * Loads poker-rangeman on first use. It is an ES module, which Node 20.19+ and 22.13+ can
+ * require() (22.12 can too, but warns that the feature is experimental). It is loaded through
+ * Node's own module system so that test runners with their own module loader (such as Jest) load
+ * it the same way Node does.
  *
- * @param {string[]} villainRange - Exact combos ('AhKd') or shorthand ('QQ', 'TT+', 'AKs', 'AKo', 'AK', 'ATs+')
- * @returns {string[]} Exact combos
- * @throws {Error} If villainRange is not an array or an entry is not a valid combo or shorthand
+ * @returns {Function} The RangeManager class
+ * @throws {Error} On a Node version that cannot require() ES modules
  */
-function parseVillainRange(villainRange) {
-  if (!Array.isArray(villainRange)) {
-    throw new Error('Villain range must be an array');
+function loadRangeManager() {
+  if (!RangeManager) {
+    const nodeRequire = process.getBuiltinModule ? process.getBuiltinModule('module').createRequire(__filename) : require;
+    try {
+      ({ RangeManager } = nodeRequire('poker-rangeman'));
+    } catch (error) {
+      throw new Error(`Ranges need Node.js 20.19+ or 22.13+ to load poker-rangeman (running ${process.version}): ${error.message}`);
+    }
   }
+  return RangeManager;
+}
+
+/**
+ * Expands a range into exact two-card combos, in input order and without duplicates.
+ *
+ * Accepts every poker-rangeman notation: exact combos ('AhKd'), pairs ('QQ', 'TT+', '99-66'),
+ * suited and offsuit hands ('AKs', 'AKo', 'ATs+', 'KQs-K9s', 'K9o+'), rank wildcards ('KXs'),
+ * plus any-suit hands ('AK', 'AT+'), which are expanded to their suited and offsuit forms.
+ * Combos are written high rank first with suits ordered c, d, h, s (e.g. 'AhKd', 'QcQd').
+ *
+ * @param {string|string[]} range - A comma-separated string ('AA,KQs,JTo') or an array of entries
+ * @returns {string[]} Exact combos
+ * @throws {Error} If the range is not a string or array, or an entry is not valid notation
+ */
+function parseRange(range) {
+  const entries = typeof range === 'string' ? range.split(',') : range;
+  if (!Array.isArray(entries)) {
+    throw new Error('Range must be an array or a comma-separated string');
+  }
+  const Manager = loadRangeManager();
   const combos = [];
   const seen = new Set();
-  const add = (first, second) => {
-    const order = c => RANKS.indexOf(c[0]) * 4 + SUITS.indexOf(c[1]);
-    const [a, b] = order(first) <= order(second) ? [first, second] : [second, first];
-    if (!seen.has(a + b)) {
-      seen.add(a + b);
-      combos.push(a + b);
+  entries.forEach((entry, i) => {
+    const invalid = () => new Error(`Invalid range entry at index ${i}: "${entry}"`);
+    if (typeof entry !== 'string') throw invalid();
+    let notation = entry.trim();
+    // poker-rangeman needs a suited or offsuit marker; 'AK' means both
+    const anySuit = notation.match(/^([AKQJT2-9])([AKQJT2-9])(\+?)$/i);
+    if (anySuit && anySuit[1].toUpperCase() !== anySuit[2].toUpperCase()) {
+      notation = `${anySuit[1]}${anySuit[2]}s${anySuit[3]},${anySuit[1]}${anySuit[2]}o${anySuit[3]}`;
     }
-  };
-  const addRanks = (high, low, type) => {
-    for (const s1 of SUITS) {
-      for (const s2 of SUITS) {
-        if (high === low ? SUITS.indexOf(s2) <= SUITS.indexOf(s1) : (type === 's' && s1 !== s2) || (type === 'o' && s1 === s2)) continue;
-        add(high + s1, low + s2);
+    let expanded;
+    try {
+      expanded = new Manager(notation).toArray();
+    } catch (error) {
+      throw invalid();
+    }
+    for (const combo of expanded) {
+      if (combo.slice(0, 2) === combo.slice(2)) throw invalid();
+      if (!seen.has(combo)) {
+        seen.add(combo);
+        combos.push(combo);
       }
     }
-  };
-
-  villainRange.forEach((entry, i) => {
-    const invalid = () => new Error(`Invalid villain range entry at index ${i}: "${entry}"`);
-    if (typeof entry !== 'string') throw invalid();
-
-    const exact = entry.match(/^([AKQJT2-9])([shdc])([AKQJT2-9])([shdc])$/);
-    if (exact) {
-      const [first, second] = [exact[1] + exact[2], exact[3] + exact[4]];
-      if (first === second) throw invalid();
-      add(first, second);
-      return;
-    }
-
-    const shorthand = entry.match(/^([AKQJT2-9])([AKQJT2-9])([so]?)(\+?)$/);
-    if (!shorthand) throw invalid();
-    const [, r1, r2, type, plus] = shorthand;
-    const [high, low] = RANKS.indexOf(r1) <= RANKS.indexOf(r2) ? [r1, r2] : [r2, r1];
-    if (high === low) {
-      if (type) throw invalid();
-      const lows = plus ? RANKS.slice(0, RANKS.indexOf(high) + 1) : high;
-      for (const rank of lows) addRanks(rank, rank);
-      return;
-    }
-    const lows = plus ? RANKS.slice(RANKS.indexOf(high) + 1, RANKS.indexOf(low) + 1) : low;
-    for (const rank of lows) addRanks(high, rank, type);
   });
   return combos;
 }
 
 /**
- * Splits villain combos by which known cards block them. See the README's Villain Range Blockers
- * section for the shape.
+ * Splits villain combos by which known cards block them, and groups the blocked ones by what
+ * villain would hold with them.
  *
- * @param {string[]} combos - Exact combos from parseVillainRange
- * @param {string[]} fullHand - Every card passed in
+ * - boardBlocks: blocked by a board card (every card that is not a hole card)
+ * - heroBlocks: blocked by one of the hole cards (nothing without hole cards)
+ * - allBlocks: blocked by any known card
+ *
+ * Each view is `{ unblocked, blocked }`. `unblocked` lists the combos villain can still hold.
+ * `blocked` groups the blocked combos: each one villain could otherwise be dealt is listed under
+ * its made hand (the best five of board + combo) and every draw it holds, evaluated with the
+ * combo as villain's hole cards; a combo containing a board card cannot be dealt at all, so it is
+ * listed under `onBoard` instead. Every key is always present.
+ *
+ * @param {string[]} combos - Exact combos from parseRange
+ * @param {string[]} fullHand - Every card passed in (board and hole cards)
  * @param {string[]|null} holeCards - Hero's hole cards, or null (every card is then board)
+ * @param {string|null} street - The street, passed on to villain's evaluation
  * @param {Function} evaluateCards - The hand evaluator, used to categorise villain's combos
- * @returns {{boardBlocks: Object, heroBlocks: Object, allBlocks: Object}} Each with `unblocked` and `blocked`
+ * @returns {{boardBlocks: Object, heroBlocks: Object, allBlocks: Object}} The three views
  */
-function classifyVillainRange(combos, fullHand, holeCards, evaluateCards) {
+function classifyCombos(combos, fullHand, holeCards, street, evaluateCards) {
   const heroCards = new Set(holeCards || []);
   const boardCards = new Set(fullHand.filter(c => !heroCards.has(c)));
   const allCards = new Set(fullHand);
@@ -87,7 +106,7 @@ function classifyVillainRange(combos, fullHand, holeCards, evaluateCards) {
   const categoriesOf = combo => {
     if (!categories.has(combo)) {
       const villainCards = cardsOf(combo);
-      const evaluation = Object.values(evaluateCards([...boardCards, ...villainCards], true, villainCards))[0];
+      const evaluation = Object.values(evaluateCards([...boardCards, ...villainCards], true, villainCards, street))[0];
       categories.set(combo, [
         MADE_HANDS.find(hand => evaluation[hand]),
         ...VILLAIN_DRAWS.filter(draw => evaluation[draw])
@@ -96,16 +115,18 @@ function classifyVillainRange(combos, fullHand, holeCards, evaluateCards) {
     return categories.get(combo);
   };
   const split = blockers => {
-    const blocked = Object.fromEntries([...MADE_HANDS, ...VILLAIN_DRAWS].map(key => [key, []]));
-    const result = { unblocked: [], blocked };
+    const blocked = Object.fromEntries([...MADE_HANDS, ...VILLAIN_DRAWS, 'onBoard'].map(key => [key, []]));
+    const unblocked = [];
     for (const combo of combos) {
       if (!cardsOf(combo).some(c => blockers.has(c))) {
-        result.unblocked.push(combo);
-      } else if (!cardsOf(combo).some(c => boardCards.has(c))) {
+        unblocked.push(combo);
+      } else if (cardsOf(combo).some(c => boardCards.has(c))) {
+        blocked.onBoard.push(combo);
+      } else {
         for (const category of categoriesOf(combo)) blocked[category].push(combo);
       }
     }
-    return result;
+    return { unblocked, blocked };
   };
   return {
     boardBlocks: split(boardCards),
@@ -114,4 +135,4 @@ function classifyVillainRange(combos, fullHand, holeCards, evaluateCards) {
   };
 }
 
-module.exports = { parseVillainRange, classifyVillainRange };
+module.exports = { parseRange, classifyCombos, loadRangeManager };
