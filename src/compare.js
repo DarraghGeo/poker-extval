@@ -8,6 +8,7 @@
 const BitVal = require('poker-bitvaljs');
 const { isCard, validateCardList } = require('./cards');
 const { parseRange } = require('./range');
+const { scoreCards, compareScores } = require('./score');
 
 let bitval = null;
 const getBitVal = () => bitval || (bitval = new BitVal());
@@ -32,15 +33,7 @@ function compareHands(handA, handB, board = []) {
     const total = hand.length + board.length;
     if (total < 5 || total > 7) throw new Error(`${name} plus the board must be 5 to 7 cards, received ${total}`);
   }
-  const bv = getBitVal();
-  const [scoreA, kickersA] = bv.evaluate(bv.getBitMasked([...handA, ...board]));
-  const [scoreB, kickersB] = bv.evaluate(bv.getBitMasked([...handB, ...board]));
-  if (scoreA !== scoreB) return scoreA > scoreB ? 1 : -1;
-  // poker-bitvaljs gives null kickers where the score alone decides (e.g. straights)
-  const ka = kickersA === null ? 0n : kickersA;
-  const kb = kickersB === null ? 0n : kickersB;
-  if (ka === kb) return 0;
-  return ka > kb ? 1 : -1;
+  return compareScores(scoreCards([...handA, ...board]), scoreCards([...handB, ...board]));
 }
 
 /** A hand given as two cards (['Ah', 'Kd']) becomes one exact combo; anything else is range notation. */

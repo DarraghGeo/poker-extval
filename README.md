@@ -14,6 +14,7 @@ A Texas Hold'em hand evaluator for the browser and Node.js. Give it 5 to 7 cards
 - [Villain range blockers](#villain-range-blockers)
 - [Comparing hands and equity](#comparing-hands-and-equity)
 - [Hand analysis](#hand-analysis)
+- [Fast, lazy analysis](#fast-lazy-analysis)
 - [Ranges](#ranges)
 - [API reference](#api-reference)
 - [TypeScript](#typescript)
@@ -28,7 +29,7 @@ A Texas Hold'em hand evaluator for the browser and Node.js. Give it 5 to 7 cards
 npm install poker-extval
 ```
 
-Works in the browser through any bundler (tested with esbuild, webpack and Vite) and in Node.js 20.19+ or 22.13+. Node needs those versions because range parsing uses [poker-rangeman](https://github.com/DarraghGeo/poker-rangeman), an ES module this CommonJS package loads with `require`; on older Node everything except ranges and equity still works.
+Works in the browser through any bundler (tested with esbuild, webpack and Vite) and in Node.js 20.19+ or 22.13+. Needs poker-bitvaljs 1.9.0 or later (installed automatically). Node needs those versions because range parsing uses [poker-rangeman](https://github.com/DarraghGeo/poker-rangeman), an ES module this CommonJS package loads with `require`; on older Node everything except ranges and equity still works.
 
 ```javascript
 import { evaluate } from 'poker-extval';           // bundler / ES modules
@@ -90,7 +91,7 @@ evaluation.usesHoleCards;  // true
 
 - Only the strongest made hand is true (a full house is not also three of a kind).
 - Position labels (`isTopPair` etc.) are true only for that made hand.
-- With 6 or 7 cards, draws are collected from **every** 5-card combination, so a draw using a card outside the best five is still reported, and `isComboDraw` is true when the whole hand has a flush draw and a straight draw.
+- With 6 or 7 cards, draws are worked out on the **whole hand**, so a draw using a card outside the best five is still reported, and `isComboDraw` is true when the whole hand has a flush draw and a straight draw. This also finds draws no single five holds: K-Q-T-9-7-6 is open-ended (a J or an 8), though every five-card subset holds only one of the two.
 - Straight draws are dropped once a straight or better is made, and flush draws once a flush or better is made.
 
 **Non-strict mode** returns every 5-card combination, each judged on its own five cards, with every applicable flag. Draws the full hand has already made are still dropped from every combination: with a made flush, no combination reports a flush draw.
@@ -192,7 +193,7 @@ keyCards.isFlushDraw;     // ['As', 'Ks', 'Qs', 'Js']
 kickerCards.isFlushDraw;  // ['Ah']
 ```
 
-A straight draw's key cards are the ranks its completions use: for each out, the highest straight it makes. A-K-Q-J-9 needs a T, so its key cards are A-K-Q-J; a double gutshot such as K-J-T-9-7 uses all five. On 6 or 7 cards in strict mode, a draw's key and kicker cards can include cards outside the best five.
+A straight draw's key cards are the ranks its completions use: for each out, the highest straight it makes. A-K-Q-J-9 needs a T, so its key cards are A-K-Q-J; a double gutshot such as K-J-T-9-7 uses all five. On 6 or 7 cards in strict mode, a draw's key cards can include cards outside the best five, and its kicker cards are the rest of the full hand.
 
 ### `evaluate` extras
 
@@ -303,6 +304,42 @@ a.nextCard.worst;        // { card: 'Ks', equity: 0.235 }
 
 The equity measures are `null` without a `villainRange`. On the river there are no outs and `equity` equals `equityNow`. A flop analysis against a few dozen combos takes well under a second; against a very wide range (about 1,000 combos) about two seconds.
 
+## Fast, lazy analysis
+
+`hand(cards, { holeCards, street })` is the entry point for high-volume use. Each method works out only what it returns, the first time it is called, and remembers it, so asking one question costs only that question.
+
+```javascript
+const { hand } = require('poker-extval');
+
+const h = hand(['4h', '9h', '7h', 'Ah', 'Js'], { holeCards: ['Ah', 'Js'] });
+
+h.is('isFlushDraw');   // true
+h.made();              // { hand: ['Ah', 'Js', '9h', '7h', '4h'], category: 'isHighCard', strength: 1, rank: [...] }
+h.draws();             // { flags: { isFlushDraw: true, ... }, keyCards: { isFlushDraw: ['Ah', '9h', '7h', '4h'], ... } }
+h.outs().nuts;         // ['Kh', 'Qh', '2h']
+h.handStrength();      // 0.54
+
+const m = h.vs('KK,QQ');
+m.equity();            // 0.451  every runout counted, once, on the first equity call
+m.equityNow();         // 0
+m.nextCard().worst;    // { card: 'Ks', equity: 0.235 }
+m.runnerRunner();      // 0.010
+m.outs().dirty;        // ['Jd', 'Jc']
+m.blockers();          // as classifyRange
+```
+
+| Method | Returns |
+| --- | --- |
+| `made()` | `{ hand, category, strength, rank }` |
+| `flags()`, `is(flag)` | Every strict flag, or one of them |
+| `draws()` | Draw flags and their key cards |
+| `outs({ strongThreshold })` | Graded outs, as in [Hand analysis](#hand-analysis) (needs hole cards) |
+| `handStrength()` | Share of villain's possible hands hero beats now (needs hole cards) |
+| `evaluation()` | The same object as `evaluate()` |
+| `vs(range)` | A matchup: `equity()`, `equityNow()`, `drawEquity()`, `nextCard()`, `runnerRunner()`, `liveCombos()`, `outs()` with clean and dirty, `blockers()` |
+
+The other functions are lazy too, with the same output as before. In every evaluation, `keyCards`, `kickerCards`, `usesHoleCards` and `villainRange` are worked out the first time they are read. In `analyzeHand`, the outs and the equity fields work the same way. They behave like plain properties in `JSON.stringify`, spread, `Object.keys`, `structuredClone` and equality checks.
+
 ## Ranges
 
 Ranges are parsed by [poker-rangeman](https://github.com/DarraghGeo/poker-rangeman). A range is a comma-separated string (`'AA,KQs,JTo'`) or an array of entries, using any of its notation:
@@ -326,6 +363,7 @@ Ranges are parsed by [poker-rangeman](https://github.com/DarraghGeo/poker-rangem
 | `evaluateHand(cards, strict, holeCards, villainRange)` | The same, positional form |
 | `new HandEvaluator(cards, options)` | `.evaluation` (as `evaluateHand`), `.cards`, `.strict`, `.holeCards`, `.street` |
 | `analyzeHand(cards, { holeCards, villainRange, strongThreshold })` | Outs, hand strength and equity measures; see [Hand analysis](#hand-analysis) |
+| `hand(cards, { holeCards, street })` | A lazy, chainable view; see [Fast, lazy analysis](#fast-lazy-analysis) |
 | `classifyRange(cards, holeCards, range, { street })` | `{ boardBlocks, heroBlocks, allBlocks }` |
 | `parseRange(range)` | Exact combos |
 | `compareHands(handA, handB, board)` | `1`, `-1` or `0` |
@@ -347,15 +385,20 @@ import { evaluate, Evaluation, FlatEvaluation, VillainRange } from 'poker-extval
 
 ## Performance
 
-Typical times per hand on a modern machine:
+Hands are scored with poker-bitvaljs's fast evaluator (four 13-bit suit masks, no BigInt). Strict mode scores every five-card combination but analyses only the best one, and nothing is computed until it is read. Typical times on a modern machine, best of five runs (`npm run benchmark` prints these first):
 
-| Hand | Strict | Non-strict |
-| --- | --- | --- |
-| 5 cards (flop) | ~0.1 ms | ~0.1 ms |
-| 6 cards (turn) | ~0.2 ms | ~0.4 ms |
-| 7 cards (river) | ~0.4 ms | ~0.7 ms |
+| Call | Time |
+| --- | --- |
+| `evaluateHand`, 7 cards, strict | ~15 µs |
+| `evaluateHand`, 7 cards, non-strict (21 combinations) | ~140 µs |
+| `evaluate`, 7 cards | ~22 µs |
+| `hand(...).is(flag)`, 7 cards | ~22 µs |
+| `analyzeHand`, flop, outs only | ~2 ms |
+| `analyzeHand`, flop against 950 villain combos, every field | ~40–60 ms |
+| `analyzeHand`, turn against 950 villain combos, every field | ~9–11 ms |
+| `classifyRange`, turn, 950 combos | ~3–4 ms |
 
-A full 1,326-combo villain range on the river takes about 40 ms. Run `npm run benchmark` for the full suite.
+Reading `keyCards` or `kickerCards` adds about 15 µs to a 7-card evaluation, the first time.
 
 ## Testing
 

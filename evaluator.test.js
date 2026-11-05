@@ -8,7 +8,8 @@
  * @copyright Copyright (c) 2025 Darragh Geoghegan
  */
 
-const { evaluateHand, HandEvaluator, classifyRange, parseRange, evaluate, analyzeHand, compareHands, equity } = require('./evaluator');
+const { evaluateHand, HandEvaluator, classifyRange, parseRange, evaluate, analyzeHand, hand, compareHands, equity } = require('./evaluator');
+const score = require('./src/score');
 
 // ==================== HAND EVALUATOR CLASS METHOD TESTS ====================
 // Note: These tests verify internal functionality through the public evaluateHand API
@@ -3883,5 +3884,175 @@ describe('analyzeHand', () => {
     ['a bad range', ['4h', '9h', '7h', 'Ah', 'Js'], { holeCards: ['Ah', 'Js'], villainRange: 'AX' }, 'Invalid range entry']
   ])('should throw for %s', (_, cards, options, message) => {
     expect(() => analyzeHand(cards, options)).toThrow(message);
+  });
+});
+
+describe('Fast scoring', () => {
+  const ranks = '23456789TJQKA';
+  const deck = [];
+  for (const r of ranks) for (const s of 'shdc') deck.push(r + s);
+  const randomHands = (count, seed) => {
+    let state = seed;
+    const random = () => (state = (state * 1103515245 + 12345) % 2147483648) / 2147483648;
+    return Array.from({ length: count }, (_, i) => [...deck].sort(() => random() - 0.5).slice(0, 5 + (i % 3)));
+  };
+
+  test('should order hands exactly like poker-bitvaljs evaluate() on random hands', () => {
+    // Guards against a poker-bitvaljs release changing its fast evaluator
+    const BitVal = require('poker-bitvaljs');
+    const bitval = new BitVal();
+    const slow = cards => {
+      const [value, kickers] = bitval.evaluate(bitval.getBitMasked(cards));
+      return [value, kickers === null ? 0n : kickers];
+    };
+    const compareSlow = (a, b) => (a[0] !== b[0] ? (a[0] > b[0] ? 1 : -1) : a[1] !== b[1] ? (a[1] > b[1] ? 1 : -1) : 0);
+    const hands = randomHands(10000, 17);
+    for (let i = 0; i + 1 < hands.length; i += 2) {
+      const fast = Math.sign(score.scoreCards(hands[i]) - score.scoreCards(hands[i + 1]));
+      if (fast !== compareSlow(slow(hands[i]), slow(hands[i + 1]))) {
+        expect({ a: hands[i], b: hands[i + 1], fast }).toEqual({ a: hands[i], b: hands[i + 1], fast: compareSlow(slow(hands[i]), slow(hands[i + 1])) });
+      }
+    }
+  });
+
+});
+
+describe('Lazy results', () => {
+  const cards = ['4h', '9h', '7h', '8s', 'Ah', 'Js'];
+  const strictEvaluation = () => Object.values(evaluateHand(cards, { holeCards: ['Ah', 'Js'] }))[0];
+
+  test('should work out card lists once and keep the same value', () => {
+    const evaluation = strictEvaluation();
+    const first = evaluation.keyCards;
+
+    expect(evaluation.keyCards).toBe(first);
+    expect(first.isFlushDraw).toEqual(['Ah', '9h', '7h', '4h']);
+    expect(Object.getOwnPropertyDescriptor(evaluation, 'keyCards').value).toBe(first);
+  });
+
+  test('should behave like plain properties for JSON, spread, keys, structuredClone and equality', () => {
+    const evaluation = strictEvaluation();
+    const plain = JSON.parse(JSON.stringify(strictEvaluation()));
+
+    expect(Object.keys(evaluation).slice(-3)).toEqual(['keyCards', 'kickerCards', 'usesHoleCards']);
+    expect({ ...evaluation }).toEqual(plain);
+    expect(structuredClone(strictEvaluation())).toEqual(plain);
+    expect(evaluation).toEqual(plain);
+  });
+
+  test('should keep an assigned value', () => {
+    const evaluation = strictEvaluation();
+    evaluation.keyCards = 'replaced';
+
+    expect(evaluation.keyCards).toBe('replaced');
+  });
+
+  test('should leave villainRange lazy and give each combination its own copy', () => {
+    const result = Object.values(evaluateHand(cards, { strict: false, holeCards: ['Ah', 'Js'], villainRange: 'AA' }));
+
+    expect(typeof Object.getOwnPropertyDescriptor(result[0], 'villainRange').get).toBe('function');
+    result[0].villainRange.heroBlocks.unblocked.push('changed');
+    expect(result[1].villainRange.heroBlocks.unblocked).not.toContain('changed');
+  });
+
+  test('should keep evaluate() lazy without changing its output', () => {
+    const flat = evaluate(cards, { holeCards: ['Ah', 'Js'] });
+
+    expect(typeof Object.getOwnPropertyDescriptor(flat, 'keyCards').get).toBe('function');
+    expect(flat.keyCards).toEqual(strictEvaluation().keyCards);
+    expect(Object.keys(flat).slice(0, 5)).toEqual(['hand', 'category', 'strength', 'rank', 'street']);
+  });
+});
+
+describe('hand()', () => {
+  const cards = ['4h', '9h', '7h', 'Ah', 'Js'];
+  const holeCards = ['Ah', 'Js'];
+
+  test('should match evaluate()', () => {
+    const h = hand(cards, { holeCards });
+    const flat = evaluate(cards, { holeCards });
+
+    expect(h.evaluation()).toEqual(flat);
+    expect(h.made()).toEqual({ hand: flat.hand, category: flat.category, strength: flat.strength, rank: flat.rank });
+    expect(h.is('isFlushDraw')).toBe(true);
+    expect(h.flags().isComboDraw).toBe(false);
+    expect(h.draws().keyCards.isFlushDraw).toEqual(['Ah', '9h', '7h', '4h']);
+  });
+
+  test('should match analyzeHand() and classifyRange() against a range', () => {
+    const analysis = JSON.parse(JSON.stringify(analyzeHand(cards, { holeCards, villainRange: 'KK,QQ' })));
+    const m = hand(cards, { holeCards }).vs('KK,QQ');
+
+    expect(m.equity()).toBe(analysis.equity);
+    expect(m.equityNow()).toBe(analysis.equityNow);
+    expect(m.drawEquity()).toBe(analysis.drawEquity);
+    expect(m.nextCard()).toEqual(analysis.nextCard);
+    expect(m.runnerRunner()).toBe(analysis.runnerRunnerEquity);
+    expect(m.outs()).toEqual(analysis.outs);
+    expect(m.liveCombos()).toBe(analysis.villainCombos);
+    expect(m.blockers()).toEqual(classifyRange(cards, holeCards, 'KK,QQ'));
+    expect(hand(cards, { holeCards }).outs()).toEqual(JSON.parse(JSON.stringify(analyzeHand(cards, { holeCards }).outs)));
+  });
+
+  test('should remember results', () => {
+    const h = hand(cards, { holeCards });
+
+    expect(h.outs()).toBe(h.outs());
+    expect(h.vs('KK,QQ')).toBe(h.vs('KK,QQ'));
+    expect(h.vs('KK,QQ').nextCard()).toBe(h.vs('KK,QQ').nextCard());
+  });
+
+  test.each([
+    ['an unknown flag', () => hand(cards, { holeCards }).is('isNothing'), 'Unknown flag "isNothing"'],
+    ['outs without hole cards', () => hand(cards).outs(), 'This needs holeCards'],
+    ['a bad range', () => hand(cards, { holeCards }).vs('AX'), 'Invalid range entry'],
+    ['a bad street', () => hand(cards, { street: 'preflop' }), "Street must be 'flop', 'turn' or 'river'"],
+    ['a bad threshold', () => hand(cards, { holeCards }).outs({ strongThreshold: 2 }), 'strongThreshold must be']
+  ])('should throw for %s', (_, call, message) => {
+    expect(call).toThrow(message);
+  });
+});
+
+describe('Strict-mode draws come from the whole hand', () => {
+  test('should find an open-ender no single five-card hand holds', () => {
+    // K-Q-T-9-7-6: a J makes K-high (K-Q-J-T-9), an 8 makes T-high (T-9-8-7-6)
+    const evaluation = Object.values(evaluateHand(['7d', 'Qc', 'Ts', '6s', 'Kh', '9c']))[0];
+
+    expect(evaluation.isOpenEndedStraightDraw).toBe(true);
+    expect(evaluation.isInsideStraightDraw).toBe(false);
+    expect(evaluation.keyCards.isStraightDraw).toEqual(['Kh', 'Qc', 'Ts', '9c', '7d', '6s']);
+  });
+
+  test('should agree with an outs reference on random turn hands', () => {
+    const ranks = '23456789TJQKA';
+    const deck = [];
+    for (const r of ranks) for (const s of 'shdc') deck.push(r + s);
+    const value = c => ranks.indexOf(c[0]) + 2;
+    const straights = [[14, 2, 3, 4, 5]];
+    for (let high = 6; high <= 14; high++) straights.push([high - 4, high - 3, high - 2, high - 1, high]);
+    let seed = 23;
+    const random = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let i = 0; i < 1500; i++) {
+      const pool = i % 2 ? deck : deck.filter(c => 'AKQJT9876'.includes(c[0]));
+      const cards = [...pool].sort(() => random() - 0.5).slice(0, 6);
+      const hole = cards.slice(4);
+      const evaluation = Object.values(evaluateHand(cards, { holeCards: hole }))[0];
+      if (!evaluation.isHighCard && !evaluation.isPair && !evaluation.isTwoPair && !evaluation.isThreeOfAKind) continue;
+      const present = new Set(cards.map(value));
+      const boardRanks = new Set(cards.slice(0, 4).map(value));
+      const outs = new Set();
+      for (const s of straights) {
+        const have = s.filter(r => present.has(r));
+        if (have.length === 4 && have.some(r => !boardRanks.has(r))) outs.add(s.find(r => !present.has(r)));
+      }
+      const suits = {};
+      cards.forEach(c => { suits[c[1]] = (suits[c[1]] || 0) + 1; });
+      const four = Object.keys(suits).find(s => suits[s] === 4);
+      const flushDraw = !!four && hole.some(c => c[1] === four);
+      const expected = { open: outs.size >= 2, inside: outs.size === 1, flushDraw };
+      const actual = { open: evaluation.isOpenEndedStraightDraw, inside: evaluation.isInsideStraightDraw, flushDraw: evaluation.isFlushDraw };
+
+      expect({ cards, ...actual }).toEqual({ cards, ...expected });
+    }
   });
 });

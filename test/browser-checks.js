@@ -21,6 +21,11 @@ module.exports = async function browserChecks(lib) {
     const a = lib.analyzeHand(['4h', '9h', '7h', 'Ah', 'Js'], { holeCards: ['Ah', 'Js'], villainRange: 'KK,QQ' });
     return { outs: a.outs, equity: a.equity, equityNow: a.equityNow, runnerRunnerEquity: a.runnerRunnerEquity, average: a.nextCard.average };
   });
+  await check('hand', () => {
+    const h = lib.hand(['4h', '9h', '7h', 'Ah', 'Js'], { holeCards: ['Ah', 'Js'] });
+    const m = h.vs('KK,QQ');
+    return { made: h.made(), flushDraw: h.is('isFlushDraw'), outs: h.outs().count, equity: m.equity(), runnerRunner: m.runnerRunner() };
+  });
   await check('invalidRange', () => lib.parseRange('AX'));
   return results;
 };

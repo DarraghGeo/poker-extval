@@ -14,7 +14,8 @@ const { evaluateCards, rankFive } = require('./src/evaluate');
 const { streetFor } = require('./src/analyze');
 const { parseRange, classifyCombos } = require('./src/range');
 const { compareHands, equity } = require('./src/compare');
-const { analyze } = require('./src/analysis');
+const { defineLazy } = require('./src/lazy');
+const { HandView } = require('./src/hand');
 
 const STREETS = ['flop', 'turn', 'river'];
 
@@ -83,23 +84,31 @@ class HandEvaluator {
    */
   constructor(cards, strict = true, holeCards = null, villainRange = null) {
     const options = readOptions(strict, holeCards, villainRange);
-    validateCards(cards);
-    this.cards = [...cards];
-    this.strict = options.strict;
-    this.street = options.street;
-    if (options.holeCards === null) {
-      this.holeCards = null;
-    } else {
-      validateHoleCards(options.holeCards, cards);
-      this.holeCards = options.holeCards;
-    }
-    const villainCombos = options.villainRange === null ? null : parseRange(options.villainRange);
-    this.evaluation = evaluateCards(this.cards, this.strict, this.holeCards, this.street);
-    if (villainCombos) {
-      const classification = classifyCombos(villainCombos, this.cards, this.holeCards, this.street, evaluateCards);
-      for (const evaluation of Object.values(this.evaluation)) evaluation.villainRange = structuredClone(classification);
-    }
+    Object.assign(this, evaluateValidated(cards, options));
   }
+}
+
+/**
+ * Validates and evaluates a hand for HandEvaluator and evaluate().
+ *
+ * @param {string[]} cards - The cards
+ * @param {Object} options - From readOptions
+ * @returns {{cards: string[], strict: boolean, street: string|null, holeCards: string[]|null, evaluation: Object}}
+ */
+function evaluateValidated(cards, options, flat = false) {
+  validateCards(cards);
+  if (options.holeCards !== null) validateHoleCards(options.holeCards, cards);
+  const copy = [...cards];
+  const holeCards = options.holeCards;
+  const villainCombos = options.villainRange === null ? null : parseRange(options.villainRange);
+  const evaluation = evaluateCards(copy, options.strict, holeCards, options.street, flat);
+  if (villainCombos) {
+    // Classified once, the first time any evaluation's villainRange is read; each gets its own copy
+    let classification = null;
+    const classify = () => classification || (classification = classifyCombos(villainCombos, copy, holeCards, options.street, evaluateCards));
+    for (const each of Object.values(evaluation)) defineLazy(each, 'villainRange', () => structuredClone(classify()));
+  }
+  return { cards: copy, strict: options.strict, street: options.street, holeCards, evaluation };
 }
 
 /**
@@ -140,19 +149,19 @@ function evaluateHand(cards, strict = true, holeCards = null, villainRange = nul
  * // result.category: 'isPair', result.isTopPair: true, result.hand: ['As', 'Kd', 'Kh', '8c', '3h']
  */
 function evaluate(cards, options = {}) {
-  const { holeCards, villainRange, street } = readOptions({ ...options, strict: true });
-  const evaluator = new HandEvaluator(cards, { strict: true, holeCards, villainRange, street });
-  const [handKey, evaluation] = Object.entries(evaluator.evaluation)[0];
+  const read = readOptions({ ...options, strict: true });
+  // The evaluation is built with evaluate()'s leading properties in place; fill them in
+  const result = evaluateValidated(cards, read, true).evaluation;
+  const handKey = Object.keys(result)[0];
+  const flat = result[handKey];
   const hand = handKey.split(', ');
-  const category = MADE_HANDS.find(h => evaluation[h]);
-  return {
-    hand,
-    category,
-    strength: HAND_STRENGTH[category],
-    rank: rankFive(hand),
-    street: street || streetFor(cards.length),
-    ...evaluation
-  };
+  const category = MADE_HANDS.find(h => flat[h]);
+  flat.hand = hand;
+  flat.category = category;
+  flat.strength = HAND_STRENGTH[category];
+  defineLazy(flat, 'rank', () => rankFive(hand));
+  flat.street = read.street || streetFor(cards.length);
+  return flat;
 }
 
 /**
@@ -180,10 +189,41 @@ function analyzeHand(cards, options = {}) {
   if (typeof strongThreshold !== 'number' || !(strongThreshold > 0 && strongThreshold <= 1)) {
     throw new Error(`strongThreshold must be a number above 0 and at most 1, received ${strongThreshold}`);
   }
-  const board = cards.filter(c => !holeCards.includes(c));
-  const villainCombos = villainRange === null || villainRange === undefined ? null : parseRange(villainRange);
-  return analyze({ heroCards: [...holeCards], board, villainCombos, strongThreshold, evaluate });
+  const view = hand(cards, { holeCards });
+  const matchup = villainRange === null || villainRange === undefined ? null : view.vs(villainRange);
+  const prepared = view._prepared();
+  // Outs and the equity group are worked out only when read; the equity fields share one pass
+  const analysis = { street: prepared.current.street, category: prepared.current.category, handStrength: prepared.currentStrength.share };
+  defineLazy(analysis, 'outs', () => (matchup || view).outs({ strongThreshold }));
+  for (const field of ['equity', 'equityNow', 'drawEquity', 'nextCard', 'runnerRunnerEquity']) {
+    if (matchup) defineLazy(analysis, field, () => matchup._field(field));
+    else analysis[field] = null;
+  }
+  analysis.villainCombos = matchup ? matchup.liveCombos() : null;
+  return analysis;
 }
 
-module.exports = { evaluateHand, evaluate, analyzeHand, HandEvaluator, classifyRange, parseRange, compareHands, equity };
+/**
+ * The chainable, lazy entry point: each method works out only what it returns, the first time it
+ * is called, and remembers it. See the README's "Fast, lazy analysis" section.
+ *
+ * @param {string[]} cards - 5 or more cards: the board plus any hole cards
+ * @param {Object} [options] - Options
+ * @param {string[]|null} [options.holeCards=null] - Hero's 2 hole cards, both present in `cards`
+ * @param {string|null} [options.street=null] - 'flop', 'turn' or 'river'; inferred from the card count when null
+ * @returns {HandView} The hand
+ * @throws {Error} If cards, holeCards or street is invalid
+ * @example
+ * const h = hand(['4h', '9h', '7h', 'Ah', 'Js'], { holeCards: ['Ah', 'Js'] });
+ * h.is('isFlushDraw');           // true
+ * h.vs('KK,QQ').equity();        // 0.451
+ */
+function hand(cards, options = {}) {
+  const { holeCards, street } = readOptions({ holeCards: options.holeCards, street: options.street });
+  validateCards(cards);
+  if (holeCards !== null) validateHoleCards(holeCards, cards);
+  return new HandView(cards, { holeCards, street }, { evaluate, parseRange, classifyCombos, evaluateCards });
+}
+
+module.exports = { evaluateHand, evaluate, analyzeHand, hand, HandEvaluator, classifyRange, parseRange, compareHands, equity };
 module.exports.default = evaluateHand;

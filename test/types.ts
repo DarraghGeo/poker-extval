@@ -1,5 +1,5 @@
 // Compile-time checks for index.d.ts: run with `npm run test:types`. Nothing here is executed.
-import evaluateHand2, { evaluateHand, evaluate, analyzeHand, HandAnalysis, classifyRange, parseRange, compareHands, equity, HandEvaluator, Evaluation } from '..';
+import evaluateHand2, { evaluateHand, evaluate, analyzeHand, hand, HandView, MatchupView, HandAnalysis, classifyRange, parseRange, compareHands, equity, HandEvaluator, Evaluation } from '..';
 const r = evaluateHand(['As', 'Kd', '8c', '3h', 'Kh'], { holeCards: ['As', 'Kh'], street: 'flop' });
 const e: Evaluation = Object.values(r)[0];
 const top: boolean = e.isTopPair;
@@ -28,3 +28,12 @@ const draw: number | null = analysis.drawEquity;
 const bestCard: string | undefined = analysis.nextCard?.best.card;
 // @ts-expect-error holeCards is required
 analyzeHand(['4h', '9h', '7h', 'Ah', 'Js'], {});
+const view: HandView = hand(['4h', '9h', '7h', 'Ah', 'Js'], { holeCards: ['Ah', 'Js'] });
+const isDraw: boolean = view.is('isFlushDraw');
+const category: string = view.made().category;
+const matchup: MatchupView = view.vs('KK,QQ');
+const viewEquity: number | null = matchup.equity();
+const spread: number | undefined = matchup.nextCard()?.standardDeviation;
+const blockedFlushes: string[] = matchup.blockers().heroBlocks.blocked.isFlush;
+// @ts-expect-error unknown flag
+view.is('isNothing');

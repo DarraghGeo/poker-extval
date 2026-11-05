@@ -8,7 +8,7 @@
  * @copyright Copyright (c) 2025 Darragh Geoghegan
  */
 
-const { HandEvaluator, evaluateHand } = require('./evaluator');
+const { HandEvaluator, evaluateHand, evaluate, analyzeHand, hand, classifyRange } = require('./evaluator');
 const { performance } = require('perf_hooks');
 
 // ==================== TEST DATA ====================
@@ -779,6 +779,45 @@ function benchmark1326SevenCardHands() {
   };
 }
 
+/**
+ * Headline timings for the high-volume calls, on random 7-card hands: the best of several runs
+ * after warm-up, so one-off slowdowns do not skew them.
+ */
+function benchmarkHeadline() {
+  console.log('\n' + '='.repeat(60));
+  console.log('HEADLINE TIMINGS (best of 5 runs)');
+  console.log('='.repeat(60));
+  const deck = generateDeck();
+  const hands = Array.from({ length: 2000 }, () => shuffleArray(deck).slice(0, 7));
+  const best = (fn, runs = 5) => {
+    fn();
+    let fastest = Infinity;
+    for (let i = 0; i < runs; i++) {
+      const start = performance.now();
+      fn();
+      fastest = Math.min(fastest, performance.now() - start);
+    }
+    return fastest;
+  };
+  const perHand = (label, fn) => {
+    const ms = best(() => hands.forEach(fn));
+    console.log(`${label.padEnd(46)} ${(ms * 1000 / hands.length).toFixed(1)} µs per hand`);
+  };
+  perHand('evaluateHand, 7 cards, strict', h => evaluateHand(h, { holeCards: h.slice(5) }));
+  perHand('evaluateHand, 7 cards, non-strict', h => evaluateHand(h, { strict: false, holeCards: h.slice(5) }));
+  perHand('evaluate, 7 cards', h => evaluate(h, { holeCards: h.slice(5) }));
+  perHand("hand(...).is('isFlushDraw'), 7 cards", h => hand(h, { holeCards: h.slice(5) }).is('isFlushDraw'));
+
+  const wide = '22+,A2s+,K2s+,Q2s+,J2s+,T2s+,92s+,82s+,72s+,A2o+,K2o+,Q2o+,J2o+,T2o+';
+  const flop = ['4h', '9h', '7h', 'Ah', 'Js'];
+  const turn = ['4h', '9h', '7h', '8s', 'Ah', 'Js'];
+  const once = (label, fn) => console.log(`${label.padEnd(46)} ${best(fn, 3).toFixed(1)} ms`);
+  once('analyzeHand, flop, no range (outs)', () => analyzeHand(flop, { holeCards: ['Ah', 'Js'] }).outs);
+  once('analyzeHand, flop vs 950 combos (all fields)', () => JSON.stringify(analyzeHand(flop, { holeCards: ['Ah', 'Js'], villainRange: wide })));
+  once('analyzeHand, turn vs 950 combos (all fields)', () => JSON.stringify(analyzeHand(turn, { holeCards: ['Ah', 'Js'], villainRange: wide })));
+  once('classifyRange, turn vs 950 combos', () => classifyRange(turn, ['Ah', 'Js'], wide));
+}
+
 // ==================== MAIN EXECUTION ====================
 
 function runAllBenchmarks() {
@@ -790,6 +829,8 @@ function runAllBenchmarks() {
   console.log(`Architecture: ${process.arch}`);
 
   const startTime = performance.now();
+
+  benchmarkHeadline();
 
   const results = {
     handTypes: benchmarkHandTypes(),
@@ -824,6 +865,7 @@ if (require.main === module) {
 module.exports = {
   Benchmark,
   runAllBenchmarks,
+  benchmarkHeadline,
   benchmarkHandTypes,
   benchmarkCardCounts,
   benchmarkIndividualMethods,

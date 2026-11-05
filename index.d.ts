@@ -221,6 +221,62 @@ export function evaluateHand(
   villainRange?: Range | null
 ): EvaluationResult;
 
+export interface HandOptions {
+  /** Hero's 2 hole cards, both present in `cards`. Needed for outs and ranges. */
+  holeCards?: Card[] | null;
+  /** The street; inferred from the card count when not given. */
+  street?: Street | null;
+}
+
+/** A hand whose methods each work out only what they return, once, and remember it. */
+export interface HandView {
+  readonly cards: Card[];
+  readonly holeCards: Card[] | null;
+  readonly street: Street | null;
+  /** The flat evaluation, as evaluate() returns it. */
+  evaluation(): FlatEvaluation;
+  /** The best five cards and the made hand. */
+  made(): { hand: Card[]; category: MadeHand; strength: number; rank: number[] };
+  /** Every flag of the best hand (strict mode). */
+  flags(): { [F in Flag]: boolean };
+  /** Whether one flag is true; throws for an unknown flag. */
+  is(flag: Flag): boolean;
+  /** The hand's draws and their key cards. */
+  draws(): { flags: Record<VillainDraw | 'isOpenEndedStraightDrawWheel' | 'isInsideStraightDrawWheel', boolean>; keyCards: Record<VillainDraw | 'isOpenEndedStraightDrawWheel' | 'isInsideStraightDrawWheel', Card[]> };
+  /** Graded outs (needs hole cards and a board of 3 to 5 cards). */
+  outs(options?: { strongThreshold?: number }): Outs;
+  /** Hero's share of every hand villain could hold that hero beats now (needs hole cards). */
+  handStrength(): number;
+  /** Hero against a villain range (needs hole cards for the equity measures). */
+  vs(range: Range): MatchupView;
+}
+
+/** Hero's hand against a villain range; every runout is counted once, on the first equity call. */
+export interface MatchupView {
+  readonly hand: HandView;
+  /** Villain's exact combos. */
+  readonly combos: string[];
+  /** All-in equity; null if no villain combo is live. */
+  equity(): number | null;
+  /** Equity if no more cards were dealt; null if no villain combo is live. */
+  equityNow(): number | null;
+  /** equity - equityNow; null if no villain combo is live. */
+  drawEquity(): number | null;
+  /** Equity after each next card; null on the river or if no villain combo is live. */
+  nextCard(): NextCardSpread | null;
+  /** Equity won only with both runout cards (flop only, else null). */
+  runnerRunner(): number | null;
+  /** How many villain combos are live. */
+  liveCombos(): number;
+  /** Graded outs, with clean and dirty against the range. */
+  outs(options?: { strongThreshold?: number }): Outs;
+  /** Villain's combos split by which known cards block them, as classifyRange returns. */
+  blockers(): VillainRange;
+}
+
+/** The chainable, lazy entry point: hand(cards, { holeCards }).is('isFlushDraw'), .vs(range).equity(), ... */
+export function hand(cards: Card[], options?: HandOptions): HandView;
+
 /** Analyses a hand: graded outs and hand strength, plus equity measures against a villain range. */
 export function analyzeHand(cards: Card[], options: AnalyzeHandOptions): HandAnalysis;
 
