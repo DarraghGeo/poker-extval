@@ -6,6 +6,9 @@
  */
 
 const { MADE_HANDS, VILLAIN_DRAWS } = require('./flags');
+const { cardOf } = require('./core/tables');
+const { FLAGS, CATEGORY_BY_STRENGTH } = require('./core/bits');
+const { Hand, setHand, classifyStrict, STREET_NAMES } = require('./core/classify');
 
 let RangeManager = null;
 
@@ -40,6 +43,29 @@ function loadRangeManager() {
  * @throws {Error} If the range is not a string or array, or an entry is not valid notation
  */
 function parseRange(range) {
+  // Engines pass the same few ranges again and again: remember the last ones parsed
+  const key = typeof range === 'string' ? range : Array.isArray(range) && range.every(e => typeof e === 'string') ? JSON.stringify(range) : null;
+  if (key !== null) {
+    const cached = parsed.get(key);
+    if (cached) {
+      parsed.delete(key);
+      parsed.set(key, cached);
+      return cached.slice();
+    }
+  }
+  const combos = parseUncached(range);
+  if (key !== null) {
+    parsed.set(key, combos.slice());
+    if (parsed.size > PARSE_CACHE_SIZE) parsed.delete(parsed.keys().next().value);
+  }
+  return combos;
+}
+
+/** Recently parsed ranges, oldest first. */
+const parsed = new Map();
+const PARSE_CACHE_SIZE = 64;
+
+function parseUncached(range) {
   const entries = typeof range === 'string' ? range.split(',') : range;
   if (!Array.isArray(entries)) {
     throw new Error('Range must be an array or a comma-separated string');
@@ -88,48 +114,72 @@ function parseRange(range) {
  * listed under `onBoard` instead. Every key is always present.
  *
  * @param {string[]} combos - Exact combos from parseRange
- * @param {string[]} fullHand - Every card passed in (board and hole cards)
- * @param {string[]|null} holeCards - Hero's hole cards, or null (every card is then board)
+ * @param {number[]} cards - The full hand (board and hole cards) as card numbers, input order
+ * @param {number[]|null} holeOrder - Positions of hero's hole cards, or null (every card is then board)
  * @param {string|null} street - The street, passed on to villain's evaluation
- * @param {Function} evaluateCards - The hand evaluator, used to categorise villain's combos
  * @returns {{boardBlocks: Object, heroBlocks: Object, allBlocks: Object}} The three views
  */
-function classifyCombos(combos, fullHand, holeCards, street, evaluateCards) {
-  const heroCards = new Set(holeCards || []);
-  const boardCards = new Set(fullHand.filter(c => !heroCards.has(c)));
-  const allCards = new Set(fullHand);
-  const cardsOf = combo => [combo.slice(0, 2), combo.slice(2)];
-  const categories = new Map();
-  const categoriesOf = combo => {
-    if (!categories.has(combo)) {
-      const villainCards = cardsOf(combo);
-      const evaluation = Object.values(evaluateCards([...boardCards, ...villainCards], true, villainCards, street))[0];
-      categories.set(combo, [
-        MADE_HANDS.find(hand => evaluation[hand]),
-        ...VILLAIN_DRAWS.filter(draw => evaluation[draw])
-      ]);
+function classifyCombos(combos, cards, holeOrder, street) {
+  const hero = new Uint8Array(52);
+  const onBoard = new Uint8Array(52);
+  if (holeOrder) for (const p of holeOrder) hero[cards[p]] = 1;
+  const villainHand = [];
+  for (const c of cards) {
+    if (!hero[c]) {
+      onBoard[c] = 1;
+      villainHand.push(c);
     }
-    return categories.get(combo);
+  }
+  const n = villainHand.length;
+  villainHand.push(0, 0);
+  const streetCode = street ? STREET_NAMES.indexOf(street) : -1;
+  const x = new Hand();
+  const count = combos.length;
+  const first = new Int8Array(count);
+  const second = new Int8Array(count);
+  for (let i = 0; i < count; i++) {
+    first[i] = cardOf(combos[i].slice(0, 2));
+    second[i] = cardOf(combos[i].slice(2));
+  }
+  // Villain's made hand and draws, worked out once per combo that needs them
+  const categories = new Array(count).fill(null);
+  const categoriesOf = i => {
+    if (!categories[i]) {
+      villainHand[n] = first[i];
+      villainHand[n + 1] = second[i];
+      setHand(x, villainHand, first[i], second[i], streetCode);
+      classifyStrict(x);
+      const list = [CATEGORY_BY_STRENGTH[x.strength]];
+      for (let k = 0; k < VILLAIN_DRAWS.length; k++) if (x.lo & VILLAIN_DRAW_BITS[k]) list.push(VILLAIN_DRAWS[k]);
+      categories[i] = list;
+    }
+    return categories[i];
   };
-  const split = blockers => {
-    const blocked = Object.fromEntries([...MADE_HANDS, ...VILLAIN_DRAWS, 'onBoard'].map(key => [key, []]));
+  const split = (blockA, blockB) => {
+    const blocked = {};
+    for (const key of BLOCKED_KEYS) blocked[key] = [];
     const unblocked = [];
-    for (const combo of combos) {
-      if (!cardsOf(combo).some(c => blockers.has(c))) {
-        unblocked.push(combo);
-      } else if (cardsOf(combo).some(c => boardCards.has(c))) {
-        blocked.onBoard.push(combo);
+    for (let i = 0; i < count; i++) {
+      const a = first[i];
+      const b = second[i];
+      if (!(blockA[a] || blockA[b] || (blockB && (blockB[a] || blockB[b])))) {
+        unblocked.push(combos[i]);
+      } else if (onBoard[a] || onBoard[b]) {
+        blocked.onBoard.push(combos[i]);
       } else {
-        for (const category of categoriesOf(combo)) blocked[category].push(combo);
+        for (const category of categoriesOf(i)) blocked[category].push(combos[i]);
       }
     }
     return { unblocked, blocked };
   };
   return {
-    boardBlocks: split(boardCards),
-    heroBlocks: split(heroCards),
-    allBlocks: split(allCards)
+    boardBlocks: split(onBoard, null),
+    heroBlocks: split(hero, null),
+    allBlocks: split(onBoard, hero)
   };
 }
+
+const BLOCKED_KEYS = [...MADE_HANDS, ...VILLAIN_DRAWS, 'onBoard'];
+const VILLAIN_DRAW_BITS = VILLAIN_DRAWS.map(draw => 1 << FLAGS[draw]);
 
 module.exports = { parseRange, classifyCombos, loadRangeManager };

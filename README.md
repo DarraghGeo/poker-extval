@@ -2,6 +2,8 @@
 
 A Texas Hold'em hand evaluator for the browser and Node.js. Give it 5 to 7 cards (board plus hole cards) and it tells you what the player holds: the made hand, where it sits on the board (top pair, over pair, bottom set), every draw that uses the player's cards, how the hole cards rank against the board, and which of a villain's combos the known cards block. It also compares hands and calculates equity.
 
+Version 6 is a rewrite for speed: the same results as 5.2, byte for byte, 5 to 12 times faster to evaluate a hand and 4 to 7 times faster to analyse one, plus a [core API](#core-api) that classifies a whole range on one board in a fraction of a microsecond per combo. See [Upgrading from 5.x](#upgrading-from-5x).
+
 ## Contents
 
 - [Installation](#installation)
@@ -15,10 +17,12 @@ A Texas Hold'em hand evaluator for the browser and Node.js. Give it 5 to 7 cards
 - [Comparing hands and equity](#comparing-hands-and-equity)
 - [Hand analysis](#hand-analysis)
 - [Fast, lazy analysis](#fast-lazy-analysis)
+- [Core API](#core-api)
 - [Ranges](#ranges)
 - [API reference](#api-reference)
 - [TypeScript](#typescript)
 - [Performance](#performance)
+- [Upgrading from 5.x](#upgrading-from-5x)
 - [Testing](#testing)
 - [Releasing](#releasing)
 - [License](#license)
@@ -27,6 +31,7 @@ A Texas Hold'em hand evaluator for the browser and Node.js. Give it 5 to 7 cards
 
 ```bash
 npm install poker-extval
+npm install poker-extval@next   # the 6.0 prerelease
 ```
 
 Works in the browser through any bundler (tested with esbuild, webpack and Vite) and in Node.js 20.19+ or 22.13+. Needs poker-bitvaljs 1.9.0 or later (installed automatically). Node needs those versions because range parsing uses [poker-rangeman](https://github.com/DarraghGeo/poker-rangeman), an ES module this CommonJS package loads with `require`; on older Node everything except ranges and equity still works.
@@ -302,7 +307,7 @@ a.nextCard.worst;        // { card: 'Ks', equity: 0.235 }
 | `runnerRunnerEquity` | Flop only: the part of `equity` won only with both runout cards, where neither card alone would have put hero ahead |
 | `villainCombos` | How many of villain's combos are live (not blocked by the known cards) |
 
-The equity measures are `null` without a `villainRange`. On the river there are no outs and `equity` equals `equityNow`. A flop analysis against a few dozen combos takes well under a second; against a very wide range (about 1,000 combos) about two seconds.
+The equity measures are `null` without a `villainRange`. On the river there are no outs and `equity` equals `equityNow`. A flop analysis against a few dozen combos takes about a millisecond; against a very wide range (about 1,000 combos) about 10 ms.
 
 ## Fast, lazy analysis
 
@@ -338,7 +343,46 @@ m.blockers();          // as classifyRange
 | `evaluation()` | The same object as `evaluate()` |
 | `vs(range)` | A matchup: `equity()`, `equityNow()`, `drawEquity()`, `nextCard()`, `runnerRunner()`, `liveCombos()`, `outs()` with clean and dirty, `blockers()` |
 
-The other functions are lazy too, with the same output as before. In every evaluation, `keyCards`, `kickerCards`, `usesHoleCards` and `villainRange` are worked out the first time they are read. In `analyzeHand`, the outs and the equity fields work the same way. They behave like plain properties in `JSON.stringify`, spread, `Object.keys`, `structuredClone` and equality checks.
+The other functions are lazy too, with the same output as before. In every evaluation, `keyCards`, `kickerCards` and `villainRange` are worked out the first time they are read. In `analyzeHand`, the outs and the equity fields work the same way. They behave like plain properties in `JSON.stringify`, spread, `Object.keys`, `structuredClone` and equality checks.
+
+## Core API
+
+For engines that classify hundreds of hands per decision, the core API skips the evaluation objects altogether. Set up a board once, then classify hole cards on it: each result is the strict-mode flags `evaluateHand` gives (with the combo as hole cards), packed into two integers.
+
+```javascript
+const { board, parseRange, FLAGS, hasFlag } = require('poker-extval');
+
+const b = board(['Kh', '9h', '4c', '2d']);   // 3 to 5 cards; { street } as in evaluateHand
+
+const r = b.classify('AhJh');                // or ['Ah', 'Jh'], or two card numbers
+r.is('isFlushDraw');                         // true
+r.is(FLAGS.isTwoOvercards);                  // false (J is below K)
+r.category;                                  // 'isHighCard'
+r.five;                                      // ['Ah', 'Kh', 'Jh', '9h', '4c']
+r.score;                                     // poker-bitvaljs score: higher wins, equal ties
+r.flags();                                   // every flag, as an object
+
+// A whole range at once, into typed arrays, with nothing allocated per combo
+const combos = parseRange('22+,A2s+,K9o+');
+const all = b.classifyAll(combos);
+for (let i = 0; i < all.count; i++) {
+  if (all.blocked[i]) continue;              // shares a card with the board
+  if (hasFlag(all.lo[i], all.hi[i], FLAGS.isFlushDraw)) { /* combos[i] holds a flush draw */ }
+  all.strength[i];                           // 10 royal flush ... 1 high card
+  all.score[i];
+}
+```
+
+| Export | Meaning |
+| --- | --- |
+| `board(cards, { street })` | A board of 3 to 5 cards (strings or card numbers) |
+| `.classify(hole)` | `{ lo, hi, strength, score, five, category, is(flag), flags() }` |
+| `.classifyAll(combos)` | `{ count, lo, hi, strength, score, blocked }`, each a typed array indexed like `combos`; combos are `'AhKd'` strings or card numbers in pairs |
+| `FLAGS` | Flag index by name, in the evaluation's order. Flag `i` is bit `i % 32` of `lo` (flags 0-31) or `hi` (32-36) |
+| `hasFlag(lo, hi, flag)` | Whether a flag index is set |
+| `cardIndex(card)`, `cardString(n)` | Card strings to card numbers (`rank * 4 + suit`, `'2s'` = 0 ... `'Ac'` = 51) and back |
+
+On a turn board `classifyAll` takes about 0.15 µs per combo and `classify` about 0.4 µs.
 
 ## Ranges
 
@@ -368,6 +412,8 @@ Ranges are parsed by [poker-rangeman](https://github.com/DarraghGeo/poker-rangem
 | `parseRange(range)` | Exact combos |
 | `compareHands(handA, handB, board)` | `1`, `-1` or `0` |
 | `equity(hero, villain, board, { deadCards, iterations })` | `Promise<{ win, tie, lose, equity }>` |
+| `board(cards, { street })` | A board to classify combos on; see [Core API](#core-api) |
+| `FLAGS`, `hasFlag(lo, hi, flag)`, `cardIndex(card)`, `cardString(n)` | Core API helpers |
 
 Every function validates its input and throws an `Error` with a descriptive message: fewer than 5 cards, a malformed card or invalid rank or suit, a duplicate card, hole cards that are not 2 distinct cards from `cards`, an unknown street, or an invalid range entry.
 
@@ -385,20 +431,36 @@ import { evaluate, Evaluation, FlatEvaluation, VillainRange } from 'poker-extval
 
 ## Performance
 
-Hands are scored with poker-bitvaljs's fast evaluator (four 13-bit suit masks, no BigInt). Strict mode scores every five-card combination but analyses only the best one, and nothing is computed until it is read. Typical times on a modern machine, best of five runs (`npm run benchmark` prints these first):
+Everything runs on integer cards and four 13-bit suit masks. The best five is built from the hand's shape (no search), flags are bit operations, and the objects are built at the end with lazy card lists. Hands are scored with poker-bitvaljs's fast evaluator. In `analyzeHand`, scores on each runout board are cached by rank class: unless a flush is possible, two hands with the same ranks score the same. Ranges parsed recently are remembered.
 
-| Call | Time |
-| --- | --- |
-| `evaluateHand`, 7 cards, strict | ~15 µs |
-| `evaluateHand`, 7 cards, non-strict (21 combinations) | ~140 µs |
-| `evaluate`, 7 cards | ~22 µs |
-| `hand(...).is(flag)`, 7 cards | ~22 µs |
-| `analyzeHand`, flop, outs only | ~2 ms |
-| `analyzeHand`, flop against 950 villain combos, every field | ~40–60 ms |
-| `analyzeHand`, turn against 950 villain combos, every field | ~9–11 ms |
-| `classifyRange`, turn, 950 combos | ~3–4 ms |
+Times on one machine (Node 22), steady state, against 5.2.0 on the same machine. `npm run benchmark` prints the 6.0 timings first.
 
-Reading `keyCards` or `kickerCards` adds about 15 µs to a 7-card evaluation, the first time.
+| Call | 5.2.0 | 6.0 | Faster |
+| --- | --- | --- | --- |
+| `evaluate`, 7 cards | 19 µs | 1.6 µs | 11.6× |
+| `evaluateHand`, 7 cards, strict | 15 µs | 2.0 µs | 7.7× |
+| `evaluateHand`, 6 cards, strict | 13 µs | 1.9 µs | 7.1× |
+| `evaluateHand`, 5 cards, strict | 8.3 µs | 1.6 µs | 5.1× |
+| `evaluateHand`, 7 cards, then read `keyCards` | 33 µs | 7.3 µs | 4.4× |
+| `evaluateHand`, 7 cards, non-strict (21 combinations) | 121 µs | 20 µs | 6.0× |
+| `analyzeHand`, flop, outs only | 1.4 ms | 0.19 ms | 7.4× |
+| `analyzeHand`, flop against 950 villain combos, every field | 38 ms | 10 ms | 3.7× |
+| `analyzeHand`, turn against 950 villain combos, every field | 6.4 ms | 1.6 ms | 3.9× |
+| `classifyRange`, turn, 950 combos | 3.2 ms | 0.44 ms | 7.3× |
+| Core: `board().classifyAll`, turn, per combo | – | 0.12 µs | – |
+| Core: `board().classify`, turn | – | 0.40 µs | – |
+
+Reading `keyCards` or `kickerCards` adds about 5 µs to a 7-card evaluation, the first time.
+
+## Upgrading from 5.x
+
+Version 6 returns exactly what 5.2.0 returns: the same keys, values and property order, the same errors word for word, and the same lazy card lists. This was checked on hundreds of thousands of random hands, strict and non-strict, with and without hole cards, villain ranges and streets, and on 1,000 `analyzeHand` spots. Nothing needs to change to upgrade. The differences:
+
+- **New:** the [core API](#core-api) (`board`, `FLAGS`, `hasFlag`, `cardIndex`, `cardString`).
+- **Computed up front:** `usesHoleCards` and `evaluate()`'s `rank` are cheap now, so they are plain values rather than lazy properties. Their values are unchanged.
+- **Hidden state:** evaluation objects keep their lazy state under a non-enumerable symbol. `JSON.stringify`, `Object.keys`, spread, `structuredClone` and equality checks never see it; `Reflect.ownKeys` does.
+- **Range cache:** `parseRange` remembers the last 64 ranges it parsed. It still returns a new array every time.
+- **Internals removed:** `src/analyze.js` is gone, and `src/score.js` keeps only `scoreCards` and `compareScores`. Only code that imported files under `src/` directly is affected.
 
 ## Testing
 
@@ -406,7 +468,7 @@ Reading `keyCards` or `kickerCards` adds about 15 µs to a 7-card evaluation, th
 npm test
 ```
 
-Runs the Jest suite (over 800 tests) and type-checks `index.d.ts`. Alongside the per-hand tests, the suite checks strict mode's best hand, every draw, and hand ranks against independent reference implementations on random hands.
+Runs the Jest suite (nearly 900 tests) and type-checks `index.d.ts`. Alongside the per-hand tests, the suite checks strict mode's best hand, every draw, and hand ranks against independent reference implementations on random hands.
 
 ```bash
 npm run test:browser
@@ -417,6 +479,8 @@ Bundles the package for the browser with esbuild, runs every public function in 
 ## Releasing
 
 Pushing to `main` publishes to npm via GitHub Actions (`.github/workflows/publish.yml`), using npm trusted publishing so no token is stored. A push publishes only when it changes the package's code (`evaluator.js`, `src/`, `index.d.ts`) or `package.json`; changes to docs or tests alone do not. A release runs the tests, bumps the patch version (unless `package.json` already holds a version that is not on npm yet, e.g. a manual `npm version minor --no-git-tag-version`), commits the bump back to `main`, tags it `v<version>` and publishes. The workflow can also be started by hand from the Actions tab.
+
+Prereleases come from the `rewrite/v6` branch the same way. Its versions are prereleases such as `6.0.0-beta.0`; each release bumps the last number and publishes under npm's `next` tag, so `npm install poker-extval` still installs the latest release from `main`. The workflow refuses a release version on a prerelease branch, and a prerelease version on `main`.
 
 Tests run on every push and pull request (`.github/workflows/test.yml`) on each supported Node version, plus the browser test in headless Chromium.
 

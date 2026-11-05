@@ -1,9 +1,13 @@
 name: Publish to npm
 
-# Publishes the package when a push to main changes its code or package.json, bumping the version
-# as part of the release. Pushes that only change docs, tests or workflows do not publish.
+# Publishes the package when a push to main (or a prerelease branch) changes its code or
+# package.json, bumping the version as part of the release. Pushes that only change docs, tests or
+# workflows do not publish.
 # - If the version in package.json is not on npm yet (e.g. a manual minor/major bump), it is published as is.
-# - Otherwise the patch version is bumped and committed back to main, then published.
+# - Otherwise it is bumped (the patch version, or the prerelease number for a version such as
+#   6.0.0-beta.0) and committed back to the branch that was pushed, then published.
+# - main publishes under npm's `latest` tag. A prerelease branch publishes only prerelease
+#   versions (x.y.z-<id>.n), under the `next` tag, so `npm install poker-extval` is unaffected.
 # Each release is tagged v<version>. Commits pushed by this workflow use GITHUB_TOKEN, so they
 # do not trigger it again.
 #
@@ -13,7 +17,7 @@ name: Publish to npm
 
 on:
   push:
-    branches: [main]
+    branches: [main, rewrite/v6]
     paths:
       - evaluator.js
       - index.d.ts
@@ -49,11 +53,30 @@ jobs:
 
       - name: Bump version if already published
         id: version
+        env:
+          BRANCH: ${{ github.ref_name }}
         run: |
           NAME=$(node -p "require('./package.json').name")
           VERSION=$(node -p "require('./package.json').version")
+          case "$VERSION" in
+            *-*) PRERELEASE=true ;;
+            *) PRERELEASE=false ;;
+          esac
+          if [ "$BRANCH" != "main" ] && [ "$PRERELEASE" != "true" ]; then
+            echo "::error::$BRANCH publishes prereleases only, but package.json holds $VERSION."
+            exit 1
+          fi
+          if [ "$BRANCH" = "main" ] && [ "$PRERELEASE" = "true" ]; then
+            echo "::error::main publishes releases only, but package.json holds $VERSION."
+            exit 1
+          fi
           if npm view "$NAME@$VERSION" version > /dev/null 2>&1; then
-            VERSION=$(npm version patch --no-git-tag-version | sed 's/^v//')
+            if [ "$PRERELEASE" = "true" ]; then
+              PREID=$(node -p "require('./package.json').version.split('-')[1].split('.')[0]")
+              VERSION=$(npm version prerelease --preid "$PREID" --no-git-tag-version | sed 's/^v//')
+            else
+              VERSION=$(npm version patch --no-git-tag-version | sed 's/^v//')
+            fi
             echo "Bumped to $VERSION."
             echo "bumped=true" >> "$GITHUB_OUTPUT"
           else
@@ -61,13 +84,15 @@ jobs:
             echo "bumped=false" >> "$GITHUB_OUTPUT"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$PRERELEASE" = "true" ]; then echo "tag=next" >> "$GITHUB_OUTPUT"; else echo "tag=latest" >> "$GITHUB_OUTPUT"; fi
 
-      # Push the bump before publishing: if publishing then fails, main already holds an
+      # Push the bump before publishing: if publishing then fails, the branch already holds an
       # unpublished version and the next run publishes it instead of bumping again.
       - name: Commit version bump and tag release
         env:
           VERSION: ${{ steps.version.outputs.version }}
           BUMPED: ${{ steps.version.outputs.bumped }}
+          BRANCH: ${{ github.ref_name }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -75,6 +100,8 @@ jobs:
             git commit -am "v$VERSION [skip ci]"
           fi
           git tag "v$VERSION"
-          git push origin HEAD:main "v$VERSION"
+          git push origin "HEAD:$BRANCH" "v$VERSION"
 
-      - run: npm publish
+      - run: npm publish --tag "$TAG"
+        env:
+          TAG: ${{ steps.version.outputs.tag }}

@@ -8,7 +8,7 @@
  * @copyright Copyright (c) 2025 Darragh Geoghegan
  */
 
-const { HandEvaluator, evaluateHand, evaluate, analyzeHand, hand, classifyRange } = require('./evaluator');
+const { HandEvaluator, evaluateHand, evaluate, analyzeHand, hand, classifyRange, board, parseRange } = require('./evaluator');
 const { performance } = require('perf_hooks');
 
 // ==================== TEST DATA ====================
@@ -785,12 +785,13 @@ function benchmark1326SevenCardHands() {
  */
 function benchmarkHeadline() {
   console.log('\n' + '='.repeat(60));
-  console.log('HEADLINE TIMINGS (best of 5 runs)');
+  console.log('HEADLINE TIMINGS (best of several runs, after warming up)');
   console.log('='.repeat(60));
   const deck = generateDeck();
   const hands = Array.from({ length: 2000 }, () => shuffleArray(deck).slice(0, 7));
   const best = (fn, runs = 5) => {
-    fn();
+    // Warm up first, so the timings are of optimised code
+    for (let i = 0; i < 3; i++) fn();
     let fastest = Infinity;
     for (let i = 0; i < runs; i++) {
       const start = performance.now();
@@ -816,6 +817,18 @@ function benchmarkHeadline() {
   once('analyzeHand, flop vs 950 combos (all fields)', () => JSON.stringify(analyzeHand(flop, { holeCards: ['Ah', 'Js'], villainRange: wide })));
   once('analyzeHand, turn vs 950 combos (all fields)', () => JSON.stringify(analyzeHand(turn, { holeCards: ['Ah', 'Js'], villainRange: wide })));
   once('classifyRange, turn vs 950 combos', () => classifyRange(turn, ['Ah', 'Js'], wide));
+
+  // The core API: one board, many combos
+  const combos = parseRange(wide);
+  const turnBoard = board(['4h', '9h', '7h', '8s']);
+  const live = combos.filter(c => !['4h', '9h', '7h', '8s'].some(card => c.includes(card)));
+  const perCombo = (label, fn, count) => {
+    for (let i = 0; i < 30; i++) fn();
+    const ms = best(fn, 20);
+    console.log(`${label.padEnd(46)} ${(ms * 1e6 / count).toFixed(0)} ns per combo`);
+  };
+  perCombo('core: board().classifyAll, turn, 950 combos', () => turnBoard.classifyAll(combos), combos.length);
+  perCombo('core: board().classify, turn', () => { for (const c of live) turnBoard.classify(c); }, live.length);
 }
 
 // ==================== MAIN EXECUTION ====================

@@ -315,4 +315,66 @@ export class HandEvaluator {
   readonly evaluation: EvaluationResult;
 }
 
+/** Flag index by name, in ALL_FLAGS order: flag i is bit (i % 32) of word i >> 5 (lo or hi). */
+export const FLAGS: Readonly<{ [F in Flag]: number }>;
+
+/** Whether flag `flag` (an index from FLAGS) is set in the two flag words. */
+export function hasFlag(lo: number, hi: number, flag: number): boolean;
+
+/** The card number (rank * 4 + suit: 0 = 2s ... 51 = Ac) of a card string, or -1. */
+export function cardIndex(card: Card): number;
+
+/** The card string of a card number (0-51). */
+export function cardString(card: number): Card;
+
+/** One combo classified by Board.classify. */
+export interface Classification {
+  /** Flags 0-31 (FLAGS order). */
+  readonly lo: number;
+  /** Flags 32-36. */
+  readonly hi: number;
+  /** Made hand strength: 10 royal flush ... 1 high card. */
+  readonly strength: number;
+  /** poker-bitvaljs score of the best five: higher wins, equal ties. */
+  readonly score: number;
+  /** The best five cards, high to low. */
+  readonly five: Card[];
+  /** The made hand. */
+  readonly category: MadeHand;
+  /** Whether a flag is set, by name or FLAGS index. */
+  is(flag: Flag | number): boolean;
+  /** Every flag, as evaluateHand gives them. */
+  flags(): { [F in Flag]: boolean };
+}
+
+/** Many combos classified at once by Board.classifyAll; index i is combo i. */
+export interface BatchClassification {
+  readonly count: number;
+  readonly lo: Int32Array;
+  readonly hi: Int32Array;
+  readonly strength: Uint8Array;
+  readonly score: Int32Array;
+  /** 1 where the combo shares a card with the board (its other entries are 0). */
+  readonly blocked: Uint8Array;
+}
+
+export interface BoardOptions {
+  /** Defaults to the card count: 3 flop, 4 turn, 5 river. */
+  street?: Street | null;
+}
+
+/** A board, worked out once, to classify hole card combos on (strict mode). */
+export interface Board {
+  /** The board cards as card numbers. */
+  readonly cards: number[];
+  readonly street: Street | null;
+  /** Classifies hole cards: 'AhJs', ['Ah', 'Js'] or two card numbers. */
+  classify(hole: string | Card[] | number[]): Classification;
+  /** Classifies many combos ('AhKd' strings, or card numbers in pairs) into typed arrays. */
+  classifyAll(combos: string[] | ArrayLike<number>): BatchClassification;
+}
+
+/** A board of 3 to 5 cards (strings or card numbers) to classify combos on. */
+export function board(cards: Card[] | number[], options?: BoardOptions): Board;
+
 export default evaluateHand;

@@ -30,7 +30,13 @@ function defineLazy(obj, key, compute) {
   return obj;
 }
 
-const groupState = new WeakMap();
+/**
+ * Each object's compute function for defineLazyGroup, under a non-enumerable symbol: invisible to
+ * JSON, Object.keys, spread, structuredClone and deep-equality checks, and much cheaper than a
+ * WeakMap when objects are created by the thousand.
+ */
+const STATE = Symbol('lazyState');
+const stateDescriptor = { value: null, writable: true, enumerable: false, configurable: true };
 const groupDescriptors = new Map();
 
 /**
@@ -46,23 +52,39 @@ const groupDescriptors = new Map();
 function defineLazyGroup(obj, keys, compute) {
   let descriptors = groupDescriptors.get(keys);
   if (!descriptors) {
-    descriptors = {};
-    for (const key of keys) {
+    descriptors = keys.map(key => {
       const store = (target, value) => {
         Object.defineProperty(target, key, { value, writable: true, enumerable: true, configurable: true });
         return value;
       };
-      descriptors[key] = {
+      return {
         enumerable: true,
         configurable: true,
-        get() { return store(this, groupState.get(this)(key)); },
+        get() { return store(this, this[STATE](key)); },
         set(value) { store(this, value); }
       };
-    }
+    });
     groupDescriptors.set(keys, descriptors);
   }
-  groupState.set(obj, compute);
-  return Object.defineProperties(obj, descriptors);
+  stateDescriptor.value = compute;
+  Object.defineProperty(obj, STATE, stateDescriptor);
+  stateDescriptor.value = null;
+  // One defineProperty per key is several times faster than defineProperties
+  for (let i = 0; i < keys.length; i++) Object.defineProperty(obj, keys[i], descriptors[i]);
+  return obj;
 }
 
-module.exports = { defineLazy, defineLazyGroup };
+/**
+ * An empty plain object in dictionary mode, for results keyed by strings that are different every
+ * time (such as five-card hands): adding such keys to an ordinary object builds a new hidden class
+ * for each one. Key order is kept as usual.
+ *
+ * @returns {Object}
+ */
+function keyedObject() {
+  const obj = { _: 0 };
+  delete obj._;
+  return obj;
+}
+
+module.exports = { defineLazy, defineLazyGroup, keyedObject };

@@ -2,20 +2,23 @@
  * Poker Hand Evaluator
  *
  * Evaluates poker hands from 5 or more cards and identifies all possible made hands and draws.
- * For inputs with more than 5 cards, generates all possible 5-card combinations and evaluates each one.
+ *
+ * Everything here is built on the core in src/core/: cards as numbers, hands as suit lanes, flags as
+ * bits. The functions below turn its results into 5.x's evaluation objects, unchanged; board() is
+ * the core itself, for classifying many combos on one board.
  *
  * @license MIT
  * @copyright Copyright (c) 2025 Darragh Geoghegan
  */
 
 const { validateCards, validateHoleCards } = require('./src/cards');
-const { MADE_HANDS, HAND_STRENGTH } = require('./src/flags');
-const { evaluateCards, rankFive } = require('./src/evaluate');
-const { streetFor } = require('./src/analyze');
+const { toCards, holePositions, evaluateCards, evaluateFlat } = require('./src/evaluate');
 const { parseRange, classifyCombos } = require('./src/range');
 const { compareHands, equity } = require('./src/compare');
 const { defineLazy } = require('./src/lazy');
 const { HandView } = require('./src/hand');
+const { board, cardIndex, cardString } = require('./src/core/board');
+const { FLAGS, hasFlag } = require('./src/core/bits');
 
 const STREETS = ['flop', 'turn', 'river'];
 
@@ -56,9 +59,9 @@ function readOptions(strictOrOptions, holeCards, villainRange) {
  */
 function classifyRange(cards, holeCards, range, options = {}) {
   const { street } = readOptions({ street: options.street });
-  validateCards(cards);
-  if (holeCards !== null && holeCards !== undefined) validateHoleCards(holeCards, cards);
-  return classifyCombos(parseRange(range), [...cards], holeCards || null, street, evaluateCards);
+  const ints = toCards(cards);
+  const holeOrder = holeCards !== null && holeCards !== undefined ? holePositions(holeCards, cards) : null;
+  return classifyCombos(parseRange(range), ints, holeOrder, street);
 }
 
 class HandEvaluator {
@@ -95,20 +98,26 @@ class HandEvaluator {
  * @param {Object} options - From readOptions
  * @returns {{cards: string[], strict: boolean, street: string|null, holeCards: string[]|null, evaluation: Object}}
  */
-function evaluateValidated(cards, options, flat = false) {
-  validateCards(cards);
-  if (options.holeCards !== null) validateHoleCards(options.holeCards, cards);
+function evaluateValidated(cards, options) {
+  const ints = toCards(cards);
+  const holeOrder = options.holeCards !== null ? holePositions(options.holeCards, cards) : null;
   const copy = [...cards];
-  const holeCards = options.holeCards;
   const villainCombos = options.villainRange === null ? null : parseRange(options.villainRange);
-  const evaluation = evaluateCards(copy, options.strict, holeCards, options.street, flat);
+  const evaluation = evaluateCards(copy, ints, options.strict, holeOrder, options.street);
   if (villainCombos) {
-    // Classified once, the first time any evaluation's villainRange is read; each gets its own copy
-    let classification = null;
-    const classify = () => classification || (classification = classifyCombos(villainCombos, copy, holeCards, options.street, evaluateCards));
-    for (const each of Object.values(evaluation)) defineLazy(each, 'villainRange', () => structuredClone(classify()));
+    const classify = villainClassifier(villainCombos, ints, holeOrder, options.street);
+    for (const key in evaluation) defineLazy(evaluation[key], 'villainRange', classify);
   }
-  return { cards: copy, strict: options.strict, street: options.street, holeCards, evaluation };
+  return { cards: copy, strict: options.strict, street: options.street, holeCards: options.holeCards, evaluation };
+}
+
+/**
+ * The villainRange value: classified once, the first time any evaluation's villainRange is read,
+ * and each evaluation gets its own copy.
+ */
+function villainClassifier(combos, ints, holeOrder, street) {
+  let classification = null;
+  return () => structuredClone(classification || (classification = classifyCombos(combos, ints, holeOrder, street)));
 }
 
 /**
@@ -150,18 +159,12 @@ function evaluateHand(cards, strict = true, holeCards = null, villainRange = nul
  */
 function evaluate(cards, options = {}) {
   const read = readOptions({ ...options, strict: true });
-  // The evaluation is built with evaluate()'s leading properties in place; fill them in
-  const result = evaluateValidated(cards, read, true).evaluation;
-  const handKey = Object.keys(result)[0];
-  const flat = result[handKey];
-  const hand = handKey.split(', ');
-  const category = MADE_HANDS.find(h => flat[h]);
-  flat.hand = hand;
-  flat.category = category;
-  flat.strength = HAND_STRENGTH[category];
-  defineLazy(flat, 'rank', () => rankFive(hand));
-  flat.street = read.street || streetFor(cards.length);
-  return flat;
+  const ints = toCards(cards);
+  const holeOrder = read.holeCards !== null ? holePositions(read.holeCards, cards) : null;
+  const villainCombos = read.villainRange === null ? null : parseRange(read.villainRange);
+  const result = evaluateFlat([...cards], ints, holeOrder, read.street);
+  if (villainCombos) defineLazy(result, 'villainRange', villainClassifier(villainCombos, ints, holeOrder, read.street));
+  return result;
 }
 
 /**
@@ -193,7 +196,7 @@ function analyzeHand(cards, options = {}) {
   const matchup = villainRange === null || villainRange === undefined ? null : view.vs(villainRange);
   const prepared = view._prepared();
   // Outs and the equity group are worked out only when read; the equity fields share one pass
-  const analysis = { street: prepared.current.street, category: prepared.current.category, handStrength: prepared.currentStrength.share };
+  const analysis = { street: prepared.street, category: prepared.category, handStrength: prepared.currentShare };
   defineLazy(analysis, 'outs', () => (matchup || view).outs({ strongThreshold }));
   for (const field of ['equity', 'equityNow', 'drawEquity', 'nextCard', 'runnerRunnerEquity']) {
     if (matchup) defineLazy(analysis, field, () => matchup._field(field));
@@ -220,10 +223,13 @@ function analyzeHand(cards, options = {}) {
  */
 function hand(cards, options = {}) {
   const { holeCards, street } = readOptions({ holeCards: options.holeCards, street: options.street });
-  validateCards(cards);
-  if (holeCards !== null) validateHoleCards(holeCards, cards);
-  return new HandView(cards, { holeCards, street }, { evaluate, parseRange, classifyCombos, evaluateCards });
+  const ints = toCards(cards);
+  const holeOrder = holeCards !== null ? holePositions(holeCards, cards) : null;
+  return new HandView(cards, { holeCards, street, ints, holeOrder }, { evaluate, parseRange, classifyCombos });
 }
 
-module.exports = { evaluateHand, evaluate, analyzeHand, hand, HandEvaluator, classifyRange, parseRange, compareHands, equity };
+module.exports = {
+  evaluateHand, evaluate, analyzeHand, hand, HandEvaluator, classifyRange, parseRange, compareHands, equity,
+  board, cardIndex, cardString, FLAGS, hasFlag
+};
 module.exports.default = evaluateHand;

@@ -26,6 +26,12 @@ module.exports = async function browserChecks(lib) {
     const m = h.vs('KK,QQ');
     return { made: h.made(), flushDraw: h.is('isFlushDraw'), outs: h.outs().count, equity: m.equity(), runnerRunner: m.runnerRunner() };
   });
+  await check('board', () => {
+    const b = lib.board(['Kh', '9h', '4c', '2d']);
+    const one = b.classify('AhJh');
+    const all = b.classifyAll(['AhJh', 'KsKd', '9s9d']);
+    return { flushDraw: one.is('isFlushDraw'), five: one.five, strength: Array.from(all.strength), blocked: Array.from(all.blocked) };
+  });
   await check('invalidRange', () => lib.parseRange('AX'));
   return results;
 };

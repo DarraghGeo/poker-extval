@@ -5,13 +5,11 @@
  * @copyright Copyright (c) 2025 Darragh Geoghegan
  */
 
-const BitVal = require('poker-bitvaljs');
 const { isCard, validateCardList } = require('./cards');
 const { parseRange } = require('./range');
 const { scoreCards, compareScores } = require('./score');
+const { scorer } = require('./core/classify');
 
-let bitval = null;
-const getBitVal = () => bitval || (bitval = new BitVal());
 
 /**
  * Compares two hands on a board. Each hand plus the board must make 5 to 7 cards.
@@ -68,7 +66,7 @@ async function equity(hero, villain, board = [], options = {}) {
   if (![0, 3, 4, 5].includes(board.length)) {
     throw new Error(`Board must be 0, 3, 4 or 5 cards, received ${board.length}`);
   }
-  const result = await getBitVal().compareRange(toCombos(hero), toCombos(villain), board, deadCards, 5, iterations, true, null, 100, false);
+  const result = await scorer().compareRange(toCombos(hero), toCombos(villain), board, deadCards, 5, iterations, true, null, 100, false);
   const total = result.win + result.tie + result.lose;
   return { win: result.win, tie: result.tie, lose: result.lose, equity: total ? (result.win + result.tie / 2) / total : null };
 }

@@ -8,8 +8,10 @@
  * @copyright Copyright (c) 2025 Darragh Geoghegan
  */
 
-const { evaluateHand, HandEvaluator, classifyRange, parseRange, evaluate, analyzeHand, hand, compareHands, equity } = require('./evaluator');
+const { evaluateHand, HandEvaluator, classifyRange, parseRange, evaluate, analyzeHand, hand, compareHands, equity, board, cardIndex, cardString, FLAGS, hasFlag } = require('./evaluator');
 const score = require('./src/score');
+const { ALL_FLAGS } = require('./src/flags');
+const classifier = require('./src/core/classify');
 
 // ==================== HAND EVALUATOR CLASS METHOD TESTS ====================
 // Note: These tests verify internal functionality through the public evaluateHand API
@@ -4054,5 +4056,142 @@ describe('Strict-mode draws come from the whole hand', () => {
 
       expect({ cards, ...actual }).toEqual({ cards, ...expected });
     }
+  });
+});
+
+describe('Core API', () => {
+  const deck = [];
+  for (const r of 'AKQJT98765432') for (const s of 'shdc') deck.push(r + s);
+  const wide = parseRange('22+,A2s+,K2s+,Q2s+,J2s+,T2s+,92s+,82s+,72s+,A2o+,K2o+,Q2o+,J2o+,T2o+');
+
+  test('FLAGS should index ALL_FLAGS, and hasFlag should read them', () => {
+    expect(Object.keys(FLAGS)).toEqual([...ALL_FLAGS]);
+    ALL_FLAGS.forEach((flag, i) => expect(FLAGS[flag]).toBe(i));
+    expect(hasFlag(1 << FLAGS.isFlushDraw, 0, FLAGS.isFlushDraw)).toBe(true);
+    expect(hasFlag(0, 1 << (FLAGS.isHighCard - 32), FLAGS.isHighCard)).toBe(true);
+    expect(hasFlag(0, 0, FLAGS.isPair)).toBe(false);
+  });
+
+  test('cardIndex and cardString should round-trip every card', () => {
+    const seen = new Set();
+    for (const card of deck) {
+      const i = cardIndex(card);
+      expect(i).toBeGreaterThanOrEqual(0);
+      expect(i).toBeLessThan(52);
+      expect(cardString(i)).toBe(card);
+      seen.add(i);
+    }
+    expect(seen.size).toBe(52);
+    expect(cardIndex('Xx')).toBe(-1);
+    expect(cardIndex('A')).toBe(-1);
+    expect(cardIndex(5)).toBe(-1);
+    expect(() => cardString(52)).toThrow('Not a card number: 52');
+  });
+
+  test('classify should give evaluate()\'s flags, best five, category and score', () => {
+    let seed = 41;
+    const random = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let i = 0; i < 400; i++) {
+      const cards = [...deck].sort(() => random() - 0.5).slice(0, 5 + (i % 3));
+      const boardCards = cards.slice(2);
+      const hole = cards.slice(0, 2);
+      const street = i % 5 === 0 ? 'flop' : null;
+      const expected = evaluate([...boardCards, ...hole], { holeCards: hole, street });
+      const result = board(boardCards, { street }).classify(hole);
+      expect(result.flags()).toEqual(Object.fromEntries(ALL_FLAGS.map(f => [f, expected[f]])));
+      expect(result.five).toEqual(expected.hand);
+      expect(result.category).toBe(expected.category);
+      expect(result.strength).toBe(expected.strength);
+      expect(result.score).toBe(score.scoreCards([...boardCards, ...hole]));
+      for (const flag of ALL_FLAGS) expect(result.is(flag)).toBe(expected[flag]);
+    }
+  });
+
+  test('classify should take hole cards as a string, an array or card numbers', () => {
+    const b = board(['Kh', '9h', '4c', '2d']);
+    const a = b.classify('AhJh');
+    expect(b.classify(['Ah', 'Jh'])).toEqual(a);
+    expect(b.classify([cardIndex('Ah'), cardIndex('Jh')])).toEqual(a);
+    expect(a.is('isFlushDraw')).toBe(true);
+    expect(a.is(FLAGS.isOvercard)).toBe(true);
+    expect(a.category).toBe('isHighCard');
+  });
+
+  test('classifyAll should match classify for every combo, marking clashes as blocked', () => {
+    for (const cards of [['Kh', '9h', '4c'], ['Kh', '9h', '4c', '2d'], ['Kh', '9h', '4c', '2d', '7h'], ['8s', '8d', '6c', '5h']]) {
+      const b = board(cards);
+      const all = b.classifyAll(wide);
+      expect(all.count).toBe(wide.length);
+      wide.forEach((combo, i) => {
+        if (cards.some(c => combo.includes(c))) {
+          expect([all.blocked[i], all.lo[i], all.hi[i], all.strength[i], all.score[i]]).toEqual([1, 0, 0, 0, 0]);
+          return;
+        }
+        const one = b.classify(combo);
+        expect([all.blocked[i], all.lo[i], all.hi[i], all.strength[i], all.score[i]]).toEqual([0, one.lo, one.hi, one.strength, one.score]);
+      });
+      // The same combos as card numbers in pairs
+      const numeric = Int8Array.from(wide.flatMap(c => [cardIndex(c.slice(0, 2)), cardIndex(c.slice(2))]));
+      expect(b.classifyAll(numeric)).toEqual(all);
+    }
+  });
+
+  test('the street option should limit draws as evaluateHand does', () => {
+    const b = board(['4h', '9h', '7h', '8s'], { street: 'river' });
+    const result = b.classify(['Ah', 'Js']);
+    expect(result.is('isFlushDraw')).toBe(false);
+    expect(board(['4h', '9h', '7h', '8s']).classify(['Ah', 'Js']).is('isFlushDraw')).toBe(true);
+  });
+
+  test('should reject bad boards, hole cards, combos and flags', () => {
+    expect(() => board('Kh9h4c')).toThrow('Board must be an array');
+    expect(() => board(['Kh', '9h'])).toThrow('Board must be 3 to 5 cards, received 2');
+    expect(() => board(['Kh', '9h', 'Kh'])).toThrow('Duplicate card found: "Kh"');
+    expect(() => board(['Kh', '9h', 'Zz'])).toThrow('Board card at index 2 is not a card: "Zz"');
+    expect(() => board(['Kh', '9h', '4c'], { street: 'preflop' })).toThrow("Street must be 'flop', 'turn' or 'river', received \"preflop\"");
+    const b = board(['Kh', '9h', '4c']);
+    expect(() => b.classify(['Kh', 'Js'])).toThrow('Hole cards clash with the board or each other');
+    expect(() => b.classify(['Js', 'Js'])).toThrow('Hole cards clash with the board or each other');
+    expect(() => b.classify('AhJ')).toThrow('Hole cards must be two cards');
+    expect(() => b.classify(['Ah', 'Jx'])).toThrow('Invalid hole cards');
+    expect(() => b.classifyAll(['AhJx'])).toThrow('Invalid combo at index 0: "AhJx"');
+    expect(() => b.classify('AhJs').is('isNuts')).toThrow('Unknown flag "isNuts"');
+  });
+
+  test('the best five built from the hand\'s shape should be the first strongest five', () => {
+    let seed = 97;
+    const random = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    const direct = new classifier.Hand();
+    const searched = new classifier.Hand();
+    for (let i = 0; i < 20000; i++) {
+      const n = 5 + (i % 3);
+      const cards = [];
+      while (cards.length < n) {
+        let c = Math.floor(random() * 52);
+        // Some hands from a few ranks or mostly one suit, for full houses, quads and flushes
+        if (i % 4 === 1) c = (7 + Math.floor(random() * 5)) * 4 + (c & 3);
+        if (i % 4 === 2 && random() < 0.7) c = (c & ~3) | 1;
+        if (!cards.includes(c)) cards.push(c);
+      }
+      classifier.setHand(direct, cards, -1, -1, -1);
+      classifier.setHand(searched, cards, -1, -1, -1);
+      expect(classifier.bestFiveDirect(direct)).toBe(true);
+      classifier.bestFive(searched);
+      expect([direct.p0, direct.p1, direct.p2, direct.p3, direct.p4]).toEqual([searched.p0, searched.p1, searched.p2, searched.p3, searched.p4]);
+    }
+  });
+});
+
+describe('Range parsing cache', () => {
+  test('should return a fresh array each time', () => {
+    const a = parseRange('AKs,QQ');
+    a.push('junk');
+    expect(parseRange('AKs,QQ')).not.toContain('junk');
+    expect(parseRange(['AKs', 'QQ'])).toEqual(parseRange('AKs,QQ'));
+  });
+
+  test('should still reject a bad range every time', () => {
+    expect(() => parseRange('AKs,ZZ')).toThrow('Invalid range entry at index 1: "ZZ"');
+    expect(() => parseRange('AKs,ZZ')).toThrow('Invalid range entry at index 1: "ZZ"');
   });
 });

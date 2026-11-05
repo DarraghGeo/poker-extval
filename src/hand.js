@@ -7,7 +7,7 @@
  */
 
 const { ALL_FLAGS, DRAWS } = require('./flags');
-const { prepare, withVillain, outsOf, equityOf } = require('./analysis');
+const { prepare, withVillain, outsOf, equityOf, liveCount } = require('./analysis');
 
 const FLAG_SET = new Set(ALL_FLAGS);
 
@@ -20,13 +20,16 @@ function memo(cache, key, compute) {
 class HandView {
   /**
    * @param {string[]} cards - 5 or more cards: the board plus any hole cards
-   * @param {{holeCards: string[]|null, street: string|null}} options - Already validated
-   * @param {Object} deps - evaluate, parseRange, classifyCombos, evaluateCards (from evaluator.js)
+   * @param {{holeCards: string[]|null, street: string|null, ints: number[], holeOrder: number[]|null}} options -
+   *   Already validated, with the cards as numbers and the hole cards' positions
+   * @param {Object} deps - evaluate, parseRange, classifyCombos (from evaluator.js)
    */
   constructor(cards, options, deps) {
     this.cards = [...cards];
     this.holeCards = options.holeCards;
     this.street = options.street;
+    this._ints = options.ints;
+    this._holeOrder = options.holeOrder;
     this._deps = deps;
     this._cache = new Map();
   }
@@ -88,7 +91,7 @@ class HandView {
 
   /** Hero's share of every hand villain could hold that hero beats now (ties count half). */
   handStrength() {
-    return this._prepared().currentStrength.share;
+    return this._prepared().currentShare;
   }
 
   /**
@@ -106,8 +109,9 @@ class HandView {
     return memo(this._cache, 'prepared', () => {
       if (!this.holeCards) throw new Error('This needs holeCards');
       if (this.cards.length > 7) throw new Error(`Expected at most 7 cards (a board of 3 to 5 plus 2 hole cards), received ${this.cards.length}`);
-      const board = this.cards.filter(c => !this.holeCards.includes(c));
-      return prepare({ heroCards: [...this.holeCards], board, evaluate: this._deps.evaluate });
+      const hole = this._holeOrder;
+      const board = this._ints.filter((c, i) => i !== hole[0] && i !== hole[1]);
+      return prepare(board, [this._ints[hole[0]], this._ints[hole[1]]]);
     });
   }
 }
@@ -147,7 +151,7 @@ class MatchupView {
   runnerRunner() { return this._field('runnerRunnerEquity'); }
 
   /** How many villain combos are live (not blocked by the known cards). */
-  liveCombos() { return this._prepared().villain.length; }
+  liveCombos() { return liveCount(this._prepared()); }
 
   /** Graded outs, with clean and dirty against this range. */
   outs({ strongThreshold = 0.8 } = {}) {
@@ -158,8 +162,8 @@ class MatchupView {
   /** Villain's combos split by which known cards block them, as classifyRange returns. */
   blockers() {
     return memo(this._cache, 'blockers', () => {
-      const { classifyCombos, evaluateCards } = this.hand._deps;
-      return classifyCombos(this.combos, this.hand.cards, this.hand.holeCards, this.hand.street, evaluateCards);
+      const { classifyCombos } = this.hand._deps;
+      return classifyCombos(this.combos, this.hand._ints, this.hand._holeOrder, this.hand.street);
     });
   }
 

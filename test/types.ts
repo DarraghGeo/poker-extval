@@ -1,5 +1,5 @@
 // Compile-time checks for index.d.ts: run with `npm run test:types`. Nothing here is executed.
-import evaluateHand2, { evaluateHand, evaluate, analyzeHand, hand, HandView, MatchupView, HandAnalysis, classifyRange, parseRange, compareHands, equity, HandEvaluator, Evaluation } from '..';
+import evaluateHand2, { evaluateHand, evaluate, analyzeHand, hand, HandView, MatchupView, HandAnalysis, classifyRange, parseRange, compareHands, equity, HandEvaluator, Evaluation, board, Board, Classification, BatchClassification, FLAGS, hasFlag, cardIndex, cardString } from '..';
 const r = evaluateHand(['As', 'Kd', '8c', '3h', 'Kh'], { holeCards: ['As', 'Kh'], street: 'flop' });
 const e: Evaluation = Object.values(r)[0];
 const top: boolean = e.isTopPair;
@@ -37,3 +37,13 @@ const spread: number | undefined = matchup.nextCard()?.standardDeviation;
 const blockedFlushes: string[] = matchup.blockers().heroBlocks.blocked.isFlush;
 // @ts-expect-error unknown flag
 view.is('isNothing');
+const b: Board = board(['Kh', '9h', '4c', '2d'], { street: 'turn' });
+const one: Classification = b.classify('AhJh');
+const fd: boolean = one.is('isFlushDraw') && one.is(FLAGS.isComboDraw);
+const made: string = one.category;
+const batch: BatchClassification = b.classifyAll(parseRange('AKs,QQ'));
+const firstFd: boolean = hasFlag(batch.lo[0], batch.hi[0], FLAGS.isFlushDraw);
+const fromNumbers: BatchClassification = b.classifyAll(Int8Array.of(cardIndex('Ah'), cardIndex('Jh')));
+const name: string = cardString(51);
+// @ts-expect-error unknown flag
+one.is('isNothing');
