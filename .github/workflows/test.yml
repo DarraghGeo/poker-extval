@@ -30,8 +30,9 @@ jobs:
       - run: npm test
 
   browser:
-    # Bundles the package for the browser and checks it matches Node in headless Chromium
-    runs-on: ubuntu-latest
+    # Bundles the package for the browser and checks it matches Node in headless Chromium.
+    # Pinned to 24.04: Playwright 1.56 cannot install Chromium on ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
