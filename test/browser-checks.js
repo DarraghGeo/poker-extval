@@ -17,6 +17,10 @@ module.exports = async function browserChecks(lib) {
   await check('classifyRange', () => lib.classifyRange(['Kh', '9h', '4h', '2c', 'Ah', 'Js'], ['Ah', 'Js'], ['AA', 'KQs']));
   await check('compareHands', () => lib.compareHands(['Ah', 'Kd'], ['Qs', 'Qc'], ['Ks', '7h', '2d']));
   await check('equity', () => lib.equity(['Ah', 'Js'], 'KK', ['4h', '9h', '7h']));
+  await check('analyzeHand', () => {
+    const a = lib.analyzeHand(['4h', '9h', '7h', 'Ah', 'Js'], { holeCards: ['Ah', 'Js'], villainRange: 'KK,QQ' });
+    return { outs: a.outs, equity: a.equity, equityNow: a.equityNow, runnerRunnerEquity: a.runnerRunnerEquity, average: a.nextCard.average };
+  });
   await check('invalidRange', () => lib.parseRange('AX'));
   return results;
 };

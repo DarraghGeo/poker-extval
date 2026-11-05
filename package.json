@@ -1,6 +1,6 @@
 {
   "name": "poker-extval",
-  "version": "5.0.2",
+  "version": "5.1.0",
   "description": "Poker hand evaluator: made hands, draws, board-relative labels, villain range blockers, hand comparison and equity",
   "main": "evaluator.js",
   "files": [

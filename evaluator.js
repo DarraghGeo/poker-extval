@@ -14,6 +14,7 @@ const { evaluateCards, rankFive } = require('./src/evaluate');
 const { streetFor } = require('./src/analyze');
 const { parseRange, classifyCombos } = require('./src/range');
 const { compareHands, equity } = require('./src/compare');
+const { analyze } = require('./src/analysis');
 
 const STREETS = ['flop', 'turn', 'river'];
 
@@ -154,5 +155,35 @@ function evaluate(cards, options = {}) {
   };
 }
 
-module.exports = { evaluateHand, evaluate, HandEvaluator, classifyRange, parseRange, compareHands, equity };
+/**
+ * Analyses a hand: graded outs and hand strength, plus, against a villain range, equity, equity now,
+ * draw equity, the spread of equity over the next card, and runner-runner equity.
+ * See the README's Hand analysis section for every field.
+ *
+ * @param {string[]} cards - The board (3 to 5 cards) plus hero's 2 hole cards
+ * @param {Object} options - Options
+ * @param {string[]} options.holeCards - Hero's 2 hole cards, both present in `cards` (required)
+ * @param {string|string[]|null} [options.villainRange=null] - Villain's range; the equity measures need it
+ * @param {number} [options.strongThreshold=0.8] - Share of villain's possible hands an out must beat to be strong
+ * @returns {Object} The analysis
+ * @throws {Error} If cards, holeCards, villainRange or strongThreshold is invalid
+ * @example
+ * const a = analyzeHand(['4h', '9h', '7h', 'Ah', 'Js'], { holeCards: ['Ah', 'Js'], villainRange: 'KK,QQ' });
+ * // a.outs.nuts: the nine hearts; a.equity: about 0.45; a.equityNow: 0
+ */
+function analyzeHand(cards, options = {}) {
+  const { holeCards = null, villainRange = null, strongThreshold = 0.8 } = options;
+  validateCards(cards);
+  if (holeCards === null || holeCards === undefined) throw new Error('analyzeHand needs holeCards');
+  validateHoleCards(holeCards, cards);
+  if (cards.length > 7) throw new Error(`Expected at most 7 cards (a board of 3 to 5 plus 2 hole cards), received ${cards.length}`);
+  if (typeof strongThreshold !== 'number' || !(strongThreshold > 0 && strongThreshold <= 1)) {
+    throw new Error(`strongThreshold must be a number above 0 and at most 1, received ${strongThreshold}`);
+  }
+  const board = cards.filter(c => !holeCards.includes(c));
+  const villainCombos = villainRange === null || villainRange === undefined ? null : parseRange(villainRange);
+  return analyze({ heroCards: [...holeCards], board, villainCombos, strongThreshold, evaluate });
+}
+
+module.exports = { evaluateHand, evaluate, analyzeHand, HandEvaluator, classifyRange, parseRange, compareHands, equity };
 module.exports.default = evaluateHand;

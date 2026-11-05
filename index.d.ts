@@ -139,6 +139,79 @@ export interface EquityOptions {
   iterations?: number;
 }
 
+export interface AnalyzeHandOptions {
+  /** Hero's 2 hole cards, both present in `cards`. */
+  holeCards: Card[];
+  /** Villain's range; the equity measures need it. */
+  villainRange?: Range | null;
+  /** Share of villain's possible hands an out must beat to be graded strong. Default 0.8. */
+  strongThreshold?: number;
+}
+
+export type OutGrade = 'nuts' | 'strong' | 'weak';
+
+export interface OutDetail {
+  card: Card;
+  /** The made hand the card gives hero. */
+  category: MadeHand;
+  /** Share of villain's possible hands hero beats after the card (ties count half). */
+  handStrength: number;
+  grade: OutGrade;
+  /** With a villain range: no live villain combo beats hero after the card. */
+  clean?: boolean;
+  /** With a villain range: the share of live villain combos that still beat hero after the card. */
+  beatenBy?: number;
+}
+
+export interface Outs {
+  count: number;
+  cards: Card[];
+  /** Outs that make a hand nothing can beat. */
+  nuts: Card[];
+  /** Outs that make a hand beating at least strongThreshold of villain's possible hands. */
+  strong: Card[];
+  /** Every other out. */
+  weak: Card[];
+  /** Outs by the made hand they give. Every key is always present. */
+  byType: Record<MadeHand, Card[]>;
+  /** With a villain range: outs after which no live villain combo beats hero; null without one. */
+  clean: Card[] | null;
+  /** With a villain range: outs after which some live villain combo still beats hero; null without one. */
+  dirty: Card[] | null;
+  details: OutDetail[];
+}
+
+export interface NextCardSpread {
+  /** Mean of the equity after each next card. */
+  average: number;
+  best: { card: Card; equity: number };
+  worst: { card: Card; equity: number };
+  standardDeviation: number;
+  /** Equity after each next card that leaves villain a live combo. */
+  byCard: Record<Card, number>;
+}
+
+export interface HandAnalysis {
+  street: Street;
+  /** Hero's current made hand. */
+  category: MadeHand;
+  /** Share of every hand villain could hold that hero beats now (ties count half). */
+  handStrength: number;
+  outs: Outs;
+  /** All-in equity against the villain range, every runout counted; null without a range. */
+  equity: number | null;
+  /** Equity if no more cards were dealt; null without a range. */
+  equityNow: number | null;
+  /** equity - equityNow; null without a range. */
+  drawEquity: number | null;
+  /** Equity after each next card; null on the river or without a range. */
+  nextCard: NextCardSpread | null;
+  /** The part of equity won only with both runout cards (flop only); null otherwise. */
+  runnerRunnerEquity: number | null;
+  /** Live villain combos the equity is measured against; null without a range. */
+  villainCombos: number | null;
+}
+
 /** Evaluates a hand of 5 or more cards. */
 export function evaluateHand(cards: Card[], options?: EvaluateHandOptions): EvaluationResult;
 export function evaluateHand(
@@ -147,6 +220,9 @@ export function evaluateHand(
   holeCards?: Card[] | null,
   villainRange?: Range | null
 ): EvaluationResult;
+
+/** Analyses a hand: graded outs and hand strength, plus equity measures against a villain range. */
+export function analyzeHand(cards: Card[], options: AnalyzeHandOptions): HandAnalysis;
 
 /** Evaluates a hand in strict mode and returns one flat object. */
 export function evaluate(cards: Card[], options?: EvaluateOptions): FlatEvaluation;

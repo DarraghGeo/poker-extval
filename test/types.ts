@@ -1,5 +1,5 @@
 // Compile-time checks for index.d.ts: run with `npm run test:types`. Nothing here is executed.
-import evaluateHand2, { evaluateHand, evaluate, classifyRange, parseRange, compareHands, equity, HandEvaluator, Evaluation } from '..';
+import evaluateHand2, { evaluateHand, evaluate, analyzeHand, HandAnalysis, classifyRange, parseRange, compareHands, equity, HandEvaluator, Evaluation } from '..';
 const r = evaluateHand(['As', 'Kd', '8c', '3h', 'Kh'], { holeCards: ['As', 'Kh'], street: 'flop' });
 const e: Evaluation = Object.values(r)[0];
 const top: boolean = e.isTopPair;
@@ -21,3 +21,10 @@ evaluateHand2(['As', 'Kd', '8c', '3h', 'Kh']);
 e.isOverPairs;
 // @ts-expect-error bad street
 evaluateHand(['As', 'Kd', '8c', '3h', 'Kh'], { street: 'preflop' });
+const analysis: HandAnalysis = analyzeHand(['4h', '9h', '7h', 'Ah', 'Js'], { holeCards: ['Ah', 'Js'], villainRange: 'KK' });
+const nutOuts: string[] = analysis.outs.nuts;
+const flushOuts: string[] = analysis.outs.byType.isFlush;
+const draw: number | null = analysis.drawEquity;
+const bestCard: string | undefined = analysis.nextCard?.best.card;
+// @ts-expect-error holeCards is required
+analyzeHand(['4h', '9h', '7h', 'Ah', 'Js'], {});

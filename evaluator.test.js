@@ -8,7 +8,7 @@
  * @copyright Copyright (c) 2025 Darragh Geoghegan
  */
 
-const { evaluateHand, HandEvaluator, classifyRange, parseRange, evaluate, compareHands, equity } = require('./evaluator');
+const { evaluateHand, HandEvaluator, classifyRange, parseRange, evaluate, analyzeHand, compareHands, equity } = require('./evaluator');
 
 // ==================== HAND EVALUATOR CLASS METHOD TESTS ====================
 // Note: These tests verify internal functionality through the public evaluateHand API
@@ -3748,5 +3748,140 @@ describe('Draws match a reference by outs', () => {
         expect({ cards, five: key, ...actual }).toEqual({ cards, five: key, ...expected });
       }
     }
+  });
+});
+
+describe('analyzeHand', () => {
+  const flop = ['4h', '9h', '7h'];
+  const hero = ['Ah', 'Js'];
+
+  describe('Outs', () => {
+    test('should grade the outs of a flush draw with overcards', () => {
+      // A♥ J♠ on 4♥ 9♥ 7♥: nine hearts, three aces, two jacks
+      const { outs } = analyzeHand([...flop, ...hero], { holeCards: hero });
+
+      expect(outs.count).toBe(14);
+      // K♥, Q♥ and 2♥ make the nut flush; 8♥, T♥ and J♥ allow a straight flush
+      expect(outs.nuts).toEqual(['Kh', 'Qh', '2h']);
+      expect(outs.strong).toEqual(expect.arrayContaining(['As', 'Jh', 'Th', '8h']));
+      expect(outs.byType.isFlush).toHaveLength(9);
+      expect(outs.byType.isPair).toEqual(['As', 'Ad', 'Ac', 'Jd', 'Jc']);
+      expect(outs.nuts.length + outs.strong.length + outs.weak.length).toBe(outs.count);
+    });
+
+    test('should not count a card that only pairs the board', () => {
+      const { outs } = analyzeHand([...flop, ...hero], { holeCards: hero });
+
+      expect(outs.cards).not.toContain('4s');
+      expect(outs.cards).not.toContain('9s');
+    });
+
+    test('should not count a card that improves the category but weakens the hand', () => {
+      // A♠ A♥ on 9♦ 7♣ 4♠: a 7 gives two pair but hands villain trips; only the aces are outs
+      const { outs } = analyzeHand(['9d', '7c', '4s', 'As', 'Ah'], { holeCards: ['As', 'Ah'] });
+
+      expect(outs.cards).toEqual(['Ad', 'Ac']);
+      expect(outs.nuts).toEqual(['Ad', 'Ac']);
+    });
+
+    test('should use strongThreshold to grade outs', () => {
+      // The non-nut flushes beat over 99% of hands; top pair and a pair of jacks beat 88-89%
+      const graded = analyzeHand([...flop, ...hero], { holeCards: hero, strongThreshold: 0.9 }).outs;
+
+      expect(graded.nuts).toEqual(['Kh', 'Qh', '2h']);
+      expect(graded.strong).toEqual(['Jh', 'Th', '8h', '6h', '5h', '3h']);
+      expect(graded.weak).toEqual(['As', 'Ad', 'Ac', 'Jd', 'Jc']);
+    });
+
+    test('should split outs into clean and dirty against a range', () => {
+      // A pair of jacks still loses to KK and QQ
+      const { outs } = analyzeHand([...flop, ...hero], { holeCards: hero, villainRange: 'KK,QQ' });
+
+      expect(outs.dirty).toEqual(['Jd', 'Jc']);
+      expect(outs.clean).toHaveLength(12);
+      expect(outs.details.find(d => d.card === 'Jd').beatenBy).toBe(1);
+    });
+
+    test('should have no outs on the river', () => {
+      const { outs, nextCard } = analyzeHand([...flop, '8s', '2c', ...hero], { holeCards: hero, villainRange: 'KK' });
+
+      expect(outs.count).toBe(0);
+      expect(nextCard).toBeNull();
+    });
+  });
+
+  describe('Equity', () => {
+    test('should leave every equity measure null without a range', () => {
+      const analysis = analyzeHand([...flop, ...hero], { holeCards: hero });
+
+      for (const field of ['equity', 'equityNow', 'drawEquity', 'nextCard', 'runnerRunnerEquity', 'villainCombos']) {
+        expect(analysis[field]).toBeNull();
+      }
+      expect(analysis.outs.clean).toBeNull();
+    });
+
+    test.each([
+      [['4h', '9h', '7h'], 'KK,QQ'],
+      [['4h', '9h', '7h', '8s'], 'KK,QQ,99,T8s'],
+      [['Kd', '8c', '3h'], 'AA,KQ,88,JTs']
+    ])('should match equity() on %j against %s', async (board, range) => {
+      const analysis = analyzeHand([...board, ...hero], { holeCards: hero, villainRange: range });
+      const expected = await equity(hero, range, board);
+
+      expect(analysis.equity).toBeCloseTo(expected.equity, 10);
+    });
+
+    test('should give equity now as the showdown result on the current board', () => {
+      // A♥ J♠ on K♦ 8♣ 3♥: ace high beats villain's queen high and loses to a pair of kings
+      const analysis = analyzeHand(['Kd', '8c', '3h', ...hero], { holeCards: hero, villainRange: ['QsTs', 'KsQh'] });
+
+      expect(analysis.equityNow).toBe(0.5);
+      expect(analysis.drawEquity).toBeCloseTo(analysis.equity - 0.5, 12);
+    });
+
+    test('should report negative draw equity for a vulnerable hand', () => {
+      const analysis = analyzeHand(['9d', '7c', '4s', 'As', 'Ah'], { holeCards: ['As', 'Ah'], villainRange: 'KQs,77,99,T8s' });
+
+      expect(analysis.drawEquity).toBeLessThan(0);
+    });
+
+    test('should equal equity now on the river', () => {
+      const analysis = analyzeHand([...flop, '8s', '2c', ...hero], { holeCards: hero, villainRange: 'KK,22' });
+
+      expect(analysis.equity).toBe(analysis.equityNow);
+      expect(analysis.drawEquity).toBe(0);
+    });
+
+    test('should summarise the equity after each next card', () => {
+      const { nextCard, equity: overall } = analyzeHand([...flop, '8s', ...hero], { holeCards: hero, villainRange: 'KK' });
+
+      // Every one of the 46 unseen river cards leaves villain at least one live KK combo
+      expect(Object.keys(nextCard.byCard)).toHaveLength(46);
+      expect(nextCard.best.equity).toBe(1);
+      expect(nextCard.worst.equity).toBe(0);
+      expect(nextCard.average).toBeCloseTo(overall, 1);
+      expect(nextCard.standardDeviation).toBeGreaterThan(0.4);
+    });
+
+    test('should attribute equity won only with both runout cards to runner-runner', () => {
+      // 6♥ 5♥ on K♥ 9♣ 2♠ against aces: no single card puts hero ahead, so every win needs both
+      const analysis = analyzeHand(['Kh', '9c', '2s', '6h', '5h'], { holeCards: ['6h', '5h'], villainRange: 'AA' });
+
+      expect(analysis.equity).toBeGreaterThan(0);
+      expect(analysis.runnerRunnerEquity).toBeCloseTo(analysis.equity, 12);
+    });
+
+    test('should have no runner-runner equity on the turn', () => {
+      expect(analyzeHand([...flop, '8s', ...hero], { holeCards: hero, villainRange: 'KK' }).runnerRunnerEquity).toBeNull();
+    });
+  });
+
+  test.each([
+    ['no hole cards', ['4h', '9h', '7h', 'Ah', 'Js'], {}, 'analyzeHand needs holeCards'],
+    ['more than 7 cards', ['4h', '9h', '7h', '8s', '2c', '3d', 'Ah', 'Js'], { holeCards: ['Ah', 'Js'] }, 'Expected at most 7 cards'],
+    ['a bad threshold', ['4h', '9h', '7h', 'Ah', 'Js'], { holeCards: ['Ah', 'Js'], strongThreshold: 1.5 }, 'strongThreshold must be'],
+    ['a bad range', ['4h', '9h', '7h', 'Ah', 'Js'], { holeCards: ['Ah', 'Js'], villainRange: 'AX' }, 'Invalid range entry']
+  ])('should throw for %s', (_, cards, options, message) => {
+    expect(() => analyzeHand(cards, options)).toThrow(message);
   });
 });

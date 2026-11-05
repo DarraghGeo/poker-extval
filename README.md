@@ -13,6 +13,7 @@ A Texas Hold'em hand evaluator for the browser and Node.js. Give it 5 to 7 cards
 - [The evaluation object](#the-evaluation-object)
 - [Villain range blockers](#villain-range-blockers)
 - [Comparing hands and equity](#comparing-hands-and-equity)
+- [Hand analysis](#hand-analysis)
 - [Ranges](#ranges)
 - [API reference](#api-reference)
 - [TypeScript](#typescript)
@@ -254,6 +255,54 @@ await equity(['Ah', 'Js'], 'KK', ['4h', '9h', '7h']);
 - `compareHands(handA, handB, board)` returns `1` if `handA` wins, `-1` if `handB` wins, `0` for a tie. Each hand plus the board must be 5 to 7 cards.
 - `equity(hero, villain, board, { deadCards, iterations })` returns runout counts from hero's side and `equity = (win + tie / 2) / total`. Hero and villain can each be a combo (`'AhJs'`), two cards (`['Ah', 'Js']`) or a range (`'KK,AKs'`). On the flop and turn every runout is counted, so the result is exact; preflop it is a Monte Carlo estimate. Combos that clash with the board or dead cards are skipped.
 
+## Hand analysis
+
+`analyzeHand(cards, { holeCards, villainRange, strongThreshold })` measures a hand's outs and, against a villain range, its equity. Every runout is counted exactly.
+
+```javascript
+const { analyzeHand } = require('poker-extval');
+
+// Flop: board 4♥ 9♥ 7♥, hero A♥ J♠, villain on KK or QQ
+const a = analyzeHand(['4h', '9h', '7h', 'Ah', 'Js'], { holeCards: ['Ah', 'Js'], villainRange: 'KK,QQ' });
+
+a.outs.count;            // 14
+a.outs.nuts;             // ['Kh', 'Qh', '2h']      the nut flush
+a.outs.strong;           // ['As', 'Ad', 'Ac', 'Jh', 'Jd', 'Jc', 'Th', '8h', '6h', '5h', '3h']
+a.outs.byType.isFlush;   // the nine hearts
+a.outs.dirty;            // ['Jd', 'Jc']            a pair of jacks still loses to KK and QQ
+a.equity;                // 0.451  all-in equity to the river
+a.equityNow;             // 0      if no more cards came
+a.drawEquity;            // 0.451  equity - equityNow
+a.runnerRunnerEquity;    // 0.010  won only with both turn and river
+a.nextCard.worst;        // { card: 'Ks', equity: 0.235 }
+```
+
+**Outs** need only the hole cards. An out is a next card that gives hero a better made-hand category (high card to pair, pair to two pair, a draw to a flush, ...) using a hole card, and raises hero's hand strength. A card that pairs the board does not count, and neither does one that "improves" hero while helping villain more: A-A on 9-7-4 gets two pair from a 7, but a 7 gives villain trips, so it is not an out. Each out is graded by the hand it makes, against every hand villain could hold:
+
+| Grade | Meaning |
+| --- | --- |
+| `nuts` | No hand beats it |
+| `strong` | Beats at least `strongThreshold` (default 0.8) of villain's possible hands |
+| `weak` | Any other out |
+
+| Field | Meaning |
+| --- | --- |
+| `street`, `category` | The street and hero's current made hand |
+| `handStrength` | Share of every hand villain could hold that hero beats now (ties count half) |
+| `outs.count`, `outs.cards` | Every out |
+| `outs.nuts`, `outs.strong`, `outs.weak` | Outs by grade |
+| `outs.byType` | Outs by the made hand they give, e.g. `isFlush`; every key always present |
+| `outs.clean`, `outs.dirty` | With a range: outs after which no live villain combo beats hero, and outs that still lose to some (`null` without a range) |
+| `outs.details` | Per out: `card`, `category`, `handStrength`, `grade`, and with a range `clean` and `beatenBy` (the share of villain's combos still ahead) |
+| `equity` | All-in equity against the range, every runout counted |
+| `equityNow` | Equity if no more cards were dealt |
+| `drawEquity` | `equity - equityNow`; negative when the cards to come hurt more than they help, as for an over pair on a coordinated board |
+| `nextCard` | The equity after each next card: `byCard`, `average`, `best`, `worst`, `standardDeviation` (`null` on the river) |
+| `runnerRunnerEquity` | Flop only: the part of `equity` won only with both runout cards, where neither card alone would have put hero ahead |
+| `villainCombos` | How many of villain's combos are live (not blocked by the known cards) |
+
+The equity measures are `null` without a `villainRange`. On the river there are no outs and `equity` equals `equityNow`. A flop analysis against a few dozen combos takes well under a second; against a very wide range (about 1,000 combos) about two seconds.
+
 ## Ranges
 
 Ranges are parsed by [poker-rangeman](https://github.com/DarraghGeo/poker-rangeman). A range is a comma-separated string (`'AA,KQs,JTo'`) or an array of entries, using any of its notation:
@@ -276,6 +325,7 @@ Ranges are parsed by [poker-rangeman](https://github.com/DarraghGeo/poker-rangem
 | `evaluateHand(cards, { strict, holeCards, villainRange, street })` | Evaluations keyed by 5-card hand |
 | `evaluateHand(cards, strict, holeCards, villainRange)` | The same, positional form |
 | `new HandEvaluator(cards, options)` | `.evaluation` (as `evaluateHand`), `.cards`, `.strict`, `.holeCards`, `.street` |
+| `analyzeHand(cards, { holeCards, villainRange, strongThreshold })` | Outs, hand strength and equity measures; see [Hand analysis](#hand-analysis) |
 | `classifyRange(cards, holeCards, range, { street })` | `{ boardBlocks, heroBlocks, allBlocks }` |
 | `parseRange(range)` | Exact combos |
 | `compareHands(handA, handB, board)` | `1`, `-1` or `0` |
