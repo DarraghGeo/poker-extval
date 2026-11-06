@@ -47,8 +47,8 @@ Two ES-module builds ship in `dist/`:
 
 | File | Size (minified) | Use it when |
 | --- | --- | --- |
-| `dist/poker-extval.mjs` | 105 KB (50 KB) | Your page or bundler also loads poker-bitvaljs and poker-rangeman: it imports them by name, so there is one copy of each. This is what `import ... from 'poker-extval'` gives in bundlers and Node. |
-| `dist/poker-extval.bundle.mjs` | 330 KB (143 KB) | You want a single file with nothing else to set up: both packages are built in. |
+| `dist/poker-extval.mjs` | 107 KB (51 KB) | Your page or bundler also loads poker-bitvaljs and poker-rangeman: it imports them by name, so there is one copy of each. This is what `import ... from 'poker-extval'` gives in bundlers and Node. |
+| `dist/poker-extval.bundle.mjs` | 352 KB (151 KB) | You want a single file with nothing else to set up: both packages are built in. |
 
 Without a bundler, give `poker-extval.mjs` an import map for its two dependencies (both ship ES modules):
 
