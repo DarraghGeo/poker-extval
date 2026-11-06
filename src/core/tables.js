@@ -60,6 +60,8 @@ WINDOWS[0] = (1 << 12) | 0b1111;
 for (let w = 1; w < 10; w++) WINDOWS[w] = 0b11111 << (w - 1);
 /** Per rank mask, a bit per window holding exactly four of its five ranks (a straight draw). */
 const DRAW_WINDOWS = new Uint16Array(SIZE);
+/** Per rank mask, a bit per window holding exactly three of its five ranks (a backdoor straight draw). */
+const BACKDOOR_WINDOWS = new Uint16Array(SIZE);
 /** Per rank mask, the highest window it holds all five ranks of (its best straight), or -1. */
 const STRAIGHT_WINDOW = new Int8Array(SIZE);
 
@@ -73,18 +75,21 @@ for (let m = 0; m < SIZE; m++) {
   HIGH[m] = m ? 31 - Math.clz32(m) : -1;
   LOW[m] = m ? 31 - Math.clz32(m & -m) : -1;
   let windows = 0;
+  let backdoors = 0;
   STRAIGHT_WINDOW[m] = -1;
   for (let w = 0; w < 10; w++) {
     if ((m & WINDOWS[w]) === WINDOWS[w]) STRAIGHT_WINDOW[m] = w;
     let k = 0;
     for (let b = m & WINDOWS[w]; b; b &= b - 1) k++;
     if (k === 4) windows |= 1 << w;
+    if (k === 3) backdoors |= 1 << w;
     if (k === 5 && n === 5) STRAIGHT5[m] = 1;
   }
   DRAW_WINDOWS[m] = windows;
+  BACKDOOR_WINDOWS[m] = backdoors;
 }
 
 module.exports = {
   RANK_CHARS, SUIT_CHARS, CARD_NAMES, RANK_CODE, SUIT_CODE, cardOf,
-  POP, HIGH, LOW, STRAIGHT5, WINDOWS, DRAW_WINDOWS, STRAIGHT_WINDOW, WHEEL, ROYAL
+  POP, HIGH, LOW, STRAIGHT5, WINDOWS, DRAW_WINDOWS, BACKDOOR_WINDOWS, STRAIGHT_WINDOW, WHEEL, ROYAL
 };

@@ -32,6 +32,10 @@ module.exports = async function browserChecks(lib) {
     const all = b.classifyAll(['AhJh', 'KsKd', '9s9d']);
     return { flushDraw: one.is('isFlushDraw'), five: one.five, strength: Array.from(all.strength), blocked: Array.from(all.blocked) };
   });
+  await check('newDraws', () => {
+    const e = lib.evaluate(['Kh', '7s', '2c', 'Ah', 'Qh'], { holeCards: ['Ah', 'Qh'] });
+    return { nut: e.isNutBackdoorFlushDraw, backdoorStraight: e.isBackdoorStraightDraw, combo: e.keyCards.isBackdoorComboDraw };
+  });
   await check('invalidRange', () => lib.parseRange('AX'));
   return results;
 };

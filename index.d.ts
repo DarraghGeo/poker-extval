@@ -24,10 +24,15 @@ export type MadeHand =
 export type VillainDraw =
   | 'isFlushDraw'
   | 'isBackdoorFlushDraw'
+  | 'isNutFlushDraw'
+  | 'isNutBackdoorFlushDraw'
   | 'isOpenEndedStraightDraw'
   | 'isInsideStraightDraw'
+  | 'isDoubleGutshot'
   | 'isStraightDraw'
-  | 'isComboDraw';
+  | 'isBackdoorStraightDraw'
+  | 'isComboDraw'
+  | 'isBackdoorComboDraw';
 
 export type Flag =
   | MadeHand
@@ -41,15 +46,10 @@ export type Flag =
   | 'isTopThreeOfAKind'
   | 'isMiddleThreeOfAKind'
   | 'isBottomThreeOfAKind'
-  | 'isFlushDraw'
-  | 'isBackdoorFlushDraw'
-  | 'isOpenEndedStraightDraw'
-  | 'isInsideStraightDraw'
-  | 'isStraightDraw'
+  | VillainDraw
   | 'isStraightWheel'
   | 'isOpenEndedStraightDrawWheel'
   | 'isInsideStraightDrawWheel'
-  | 'isComboDraw'
   | 'isUnderPair'
   | 'isOvercard'
   | 'isTwoOvercards'
@@ -315,7 +315,7 @@ export class HandEvaluator {
   readonly evaluation: EvaluationResult;
 }
 
-/** Flag index by name, in ALL_FLAGS order: flag i is bit (i % 32) of word i >> 5 (lo or hi). */
+/** Flag index by name, in the order of an evaluation's properties. Read flags with hasFlag. */
 export const FLAGS: Readonly<{ [F in Flag]: number }>;
 
 /** Whether flag `flag` (an index from FLAGS) is set in the two flag words. */
@@ -329,9 +329,9 @@ export function cardString(card: number): Card;
 
 /** One combo classified by Board.classify. */
 export interface Classification {
-  /** Flags 0-31 (FLAGS order). */
+  /** Made hands, position labels, hole card categories (read with hasFlag). */
   readonly lo: number;
-  /** Flags 32-36. */
+  /** Draws (read with hasFlag). */
   readonly hi: number;
   /** Made hand strength: 10 royal flush ... 1 high card. */
   readonly strength: number;

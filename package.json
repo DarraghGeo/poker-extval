@@ -3,10 +3,22 @@
   "version": "6.0.0-beta.0",
   "description": "Poker hand evaluator: made hands, draws, board-relative labels, villain range blockers, hand comparison and equity",
   "main": "evaluator.js",
+  "module": "dist/poker-extval.mjs",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./dist/poker-extval.mjs",
+      "require": "./evaluator.js",
+      "default": "./evaluator.js"
+    },
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
+  },
   "files": [
     "evaluator.js",
     "index.d.ts",
     "src/",
+    "dist/",
     "LICENSE",
     "README.md"
   ],
@@ -16,7 +28,9 @@
     "test:types": "tsc --noEmit --strict --target es2020 --module commonjs --moduleResolution node test/types.ts",
     "test:watch": "jest --watch",
     "benchmark": "node benchmark.js",
-    "test:browser": "node test/browser.js"
+    "test:browser": "npm run build && node test/browser.js",
+    "build": "node scripts/build-esm.js",
+    "prepack": "npm run build"
   },
   "keywords": [
     "poker",

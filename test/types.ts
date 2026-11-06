@@ -47,3 +47,5 @@ const fromNumbers: BatchClassification = b.classifyAll(Int8Array.of(cardIndex('A
 const name: string = cardString(51);
 // @ts-expect-error unknown flag
 one.is('isNothing');
+const nut: boolean = e.isNutFlushDraw || e.isBackdoorStraightDraw || e.isDoubleGutshot || e.isBackdoorComboDraw || e.isNutBackdoorFlushDraw;
+const villainBackdoors: string[] = matchup.blockers().heroBlocks.blocked.isBackdoorStraightDraw;

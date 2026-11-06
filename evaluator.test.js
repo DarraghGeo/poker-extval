@@ -3293,16 +3293,18 @@ describe('Villain range blockers', () => {
     const range = villainRangeOf(['AhKd', 'KhQs', 'JsTs', 'QcQd']);
 
     expect(grouped(range.boardBlocks.blocked)).toEqual({ onBoard: ['KhQs'] });
-    expect(grouped(range.heroBlocks.blocked)).toEqual({ isPair: ['AhKd'], isHighCard: ['JsTs'] });
-    expect(grouped(range.allBlocks.blocked)).toEqual({ isPair: ['AhKd'], isHighCard: ['JsTs'], onBoard: ['KhQs'] });
+    // J♠T♠ also has a backdoor straight draw (K-J-T)
+    expect(grouped(range.heroBlocks.blocked)).toEqual({ isPair: ['AhKd'], isHighCard: ['JsTs'], isBackdoorStraightDraw: ['JsTs'] });
+    expect(grouped(range.allBlocks.blocked)).toEqual({ isPair: ['AhKd'], isHighCard: ['JsTs'], isBackdoorStraightDraw: ['JsTs'], onBoard: ['KhQs'] });
   });
 
   test('should include every made hand, draw and onBoard key in blocked', () => {
     expect(Object.keys(villainRangeOf(['AA']).heroBlocks.blocked)).toEqual([
       'isRoyalFlush', 'isStraightFlush', 'isFourOfAKind', 'isFullHouse', 'isFlush',
       'isStraight', 'isThreeOfAKind', 'isTwoPair', 'isPair', 'isHighCard',
-      'isFlushDraw', 'isBackdoorFlushDraw', 'isOpenEndedStraightDraw', 'isInsideStraightDraw',
-      'isStraightDraw', 'isComboDraw', 'onBoard'
+      'isFlushDraw', 'isBackdoorFlushDraw', 'isNutFlushDraw', 'isNutBackdoorFlushDraw',
+      'isOpenEndedStraightDraw', 'isInsideStraightDraw', 'isDoubleGutshot', 'isStraightDraw',
+      'isBackdoorStraightDraw', 'isComboDraw', 'isBackdoorComboDraw', 'onBoard'
     ]);
   });
 
@@ -3315,6 +3317,7 @@ describe('Villain range blockers', () => {
       isPair: ['AcAh', 'AdAh', 'AhAs'],
       isHighCard: ['JsTs', 'JsTc', 'JsTd', 'JsTh'],
       isFlushDraw: ['AcAh', 'AdAh', 'AhAs', 'JsTh'],
+      isNutFlushDraw: ['AcAh', 'AdAh', 'AhAs'],
       isInsideStraightDraw: ['JsTs', 'JsTc', 'JsTd', 'JsTh'],
       isStraightDraw: ['JsTs', 'JsTc', 'JsTd', 'JsTh'],
       isComboDraw: ['JsTh']
@@ -4067,9 +4070,18 @@ describe('Core API', () => {
   test('FLAGS should index ALL_FLAGS, and hasFlag should read them', () => {
     expect(Object.keys(FLAGS)).toEqual([...ALL_FLAGS]);
     ALL_FLAGS.forEach((flag, i) => expect(FLAGS[flag]).toBe(i));
-    expect(hasFlag(1 << FLAGS.isFlushDraw, 0, FLAGS.isFlushDraw)).toBe(true);
-    expect(hasFlag(0, 1 << (FLAGS.isHighCard - 32), FLAGS.isHighCard)).toBe(true);
+    // lo holds made hands, labels and hole card categories; hi holds the draws
+    const b = board(['Kh', '9h', '4c']);
+    const highCard = b.classify('AhJh');
+    expect(highCard.lo).not.toBe(0);
+    expect(hasFlag(highCard.lo, 0, FLAGS.isHighCard)).toBe(true);
+    expect(hasFlag(0, highCard.hi, FLAGS.isFlushDraw)).toBe(true);
+    expect(hasFlag(highCard.lo, 0, FLAGS.isFlushDraw)).toBe(false);
     expect(hasFlag(0, 0, FLAGS.isPair)).toBe(false);
+    for (const flag of ALL_FLAGS) {
+      const on = highCard.is(flag);
+      expect(hasFlag(highCard.lo, highCard.hi, FLAGS[flag])).toBe(on);
+    }
   });
 
   test('cardIndex and cardString should round-trip every card', () => {
@@ -4193,5 +4205,103 @@ describe('Range parsing cache', () => {
   test('should still reject a bad range every time', () => {
     expect(() => parseRange('AKs,ZZ')).toThrow('Invalid range entry at index 1: "ZZ"');
     expect(() => parseRange('AKs,ZZ')).toThrow('Invalid range entry at index 1: "ZZ"');
+  });
+});
+
+describe('Nut flush draws, double gutshots and backdoor straight draws', () => {
+  const flop = (board, hole) => Object.values(evaluateHand([...board, ...hole], { holeCards: hole }))[0];
+
+  test('should mark a flush draw holding the best missing card of the suit as the nut one', () => {
+    expect(flop(['Kh', '9h', '4c'], ['Ah', '2h'])).toMatchObject({ isFlushDraw: true, isNutFlushDraw: true });
+    expect(flop(['Kh', '9h', '4c'], ['Qh', '2h'])).toMatchObject({ isFlushDraw: true, isNutFlushDraw: false });
+    // With the A♥ on the board, the K♥ is the nut card
+    expect(flop(['Ah', '9h', '4c'], ['Kh', '2h'])).toMatchObject({ isFlushDraw: true, isNutFlushDraw: true });
+    expect(flop(['Ah', '9h', '4c'], ['Kh', '2h']).keyCards.isNutFlushDraw).toEqual(['Ah', 'Kh', '9h', '2h']);
+    // A backdoor flush draw can be the nut one too
+    expect(flop(['Kh', '7s', '2c'], ['Ah', 'Qh'])).toMatchObject({ isBackdoorFlushDraw: true, isNutBackdoorFlushDraw: true });
+    expect(flop(['Kh', '7s', '2c'], ['Qh', 'Jh'])).toMatchObject({ isBackdoorFlushDraw: true, isNutBackdoorFlushDraw: false });
+  });
+
+  test('should tell a double gutshot from four in a row', () => {
+    const gutshots = flop(['9s', '6d', '3c'], ['7h', '5d']);
+    expect(gutshots).toMatchObject({ isOpenEndedStraightDraw: true, isDoubleGutshot: true });
+    expect(gutshots.keyCards.isDoubleGutshot).toEqual(['9s', '7h', '6d', '5d', '3c']);
+    expect(flop(['9s', '8d', '2c'], ['7h', '6d'])).toMatchObject({ isOpenEndedStraightDraw: true, isDoubleGutshot: false });
+    expect(flop(['9s', '8d', '2c'], ['Jh', '7d'])).toMatchObject({ isInsideStraightDraw: true, isDoubleGutshot: false });
+  });
+
+  test('should find backdoor straight draws on the flop only', () => {
+    const backdoor = flop(['Jd', 'Ts', '2c'], ['8h', '3d']);
+    expect(backdoor).toMatchObject({ isBackdoorStraightDraw: true, isStraightDraw: false });
+    expect(backdoor.keyCards.isBackdoorStraightDraw).toEqual(['Jd', 'Ts', '8h']);
+    // Three to a straight on the board alone is not the player's
+    expect(flop(['Jd', 'Ts', '9c'], ['2h', '3d']).isBackdoorStraightDraw).toBe(false);
+    // A straight draw is not also a backdoor one
+    expect(flop(['Jd', 'Ts', '2c'], ['9h', '8d'])).toMatchObject({ isOpenEndedStraightDraw: true, isBackdoorStraightDraw: false });
+    const combo = flop(['Kh', '7s', '2c'], ['Ah', 'Qh']);
+    expect(combo).toMatchObject({ isBackdoorStraightDraw: true, isBackdoorComboDraw: true });
+    expect(combo.keyCards.isBackdoorComboDraw).toEqual(['Ah', 'Kh', 'Qh']);
+    const turn = Object.values(evaluateHand(['Kh', '7s', '2c', '4d', 'Ah', 'Qh'], { holeCards: ['Ah', 'Qh'] }))[0];
+    expect(turn).toMatchObject({ isBackdoorStraightDraw: false, isBackdoorFlushDraw: false, isNutBackdoorFlushDraw: false, isBackdoorComboDraw: false });
+  });
+
+  test('should agree with runout references on random flops', () => {
+    const deck = [];
+    for (const r of 'AKQJT98765432') for (const s of 'shdc') deck.push(r + s);
+    const value = c => '23456789TJQKA'.indexOf(c[0]) + 2;
+    const windows = [[14, 2, 3, 4, 5]];
+    for (let high = 6; high <= 14; high++) windows.push([high - 4, high - 3, high - 2, high - 1, high]);
+    // Ranks with the Ace also low, for straights
+    const ranksOf = cards => { const r = new Set(cards.map(value)); if (r.has(14)) r.add(1); return r; };
+    const contains = (ranks, w) => w.every(r => ranks.has(r === 14 && w[0] === 14 ? 14 : r) || (r === 14 && ranks.has(14)));
+    let seed = 61;
+    const random = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    let seen = { nut: 0, gut: 0, back: 0 };
+    for (let i = 0; i < 3000; i++) {
+      const pool = i % 3 === 0 ? deck : i % 3 === 1 ? deck.filter(c => 'AKQJT9876'.includes(c[0]) || c[1] === 'h') : deck.filter(c => '98765432A'.includes(c[0]));
+      const cards = [...pool].sort(() => random() - 0.5).slice(0, 5);
+      const board = cards.slice(0, 3);
+      const hole = cards.slice(3);
+      const e = flop(board, hole);
+      const have = ranksOf(cards);
+      const boardRanks = new Set(board.map(value));
+      const mine = w => w.some(r => have.has(r) && !hole.every(c => value(c) !== (r === 1 ? 14 : r)) && !boardRanks.has(r === 1 ? 14 : r));
+
+      // Nut flush draw: the best card of the suit not on the board is a hole card
+      if (e.isFlushDraw || e.isBackdoorFlushDraw) {
+        const suit = e.keyCards[e.isFlushDraw ? 'isFlushDraw' : 'isBackdoorFlushDraw'][0][1];
+        const best = deck.filter(c => c[1] === suit && !board.includes(c)).sort((a, b) => value(b) - value(a))[0];
+        const nut = hole.includes(best);
+        expect({ cards, nut: e.isNutFlushDraw || e.isNutBackdoorFlushDraw }).toEqual({ cards, nut });
+        if (nut) seen.nut++;
+      } else {
+        expect(e.isNutFlushDraw || e.isNutBackdoorFlushDraw).toBe(false);
+      }
+
+      // Double gutshot: open-ended, with no four in a row open at both ends
+      const fourInARow = [];
+      for (let low = 1; low <= 11; low++) {
+        const run = [low, low + 1, low + 2, low + 3];
+        if (run.every(r => have.has(r)) && low - 1 >= 1 && low + 4 <= 14 && !have.has(low - 1) && !have.has(low + 4) && mine(run)) fourInARow.push(run);
+      }
+      expect({ cards, gut: e.isDoubleGutshot }).toEqual({ cards, gut: e.isOpenEndedStraightDraw && fourInARow.length === 0 });
+      if (e.isDoubleGutshot) seen.gut++;
+
+      // Backdoor straight draw: two runout ranks complete a straight one alone cannot
+      const made = e.isStraight || e.isStraightFlush || e.isRoyalFlush || e.isFlush || e.isFullHouse || e.isFourOfAKind;
+      let backdoor = false;
+      if (!made && !e.isStraightDraw) {
+        for (const w of windows) {
+          const present = w.filter(r => have.has(r === 14 && w[0] === 14 ? 14 : r) || (r === 14 && have.has(14)));
+          if (present.length === 3 && present.some(r => !boardRanks.has(r))) backdoor = true;
+        }
+      }
+      expect({ cards, back: e.isBackdoorStraightDraw }).toEqual({ cards, back: backdoor });
+      if (backdoor) seen.back++;
+    }
+    // The references were exercised
+    expect(seen.nut).toBeGreaterThan(20);
+    expect(seen.gut).toBeGreaterThan(5);
+    expect(seen.back).toBeGreaterThan(100);
   });
 });

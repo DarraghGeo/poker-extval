@@ -1,6 +1,10 @@
-// Browser test: bundles the package for the browser with esbuild, runs test/browser-checks.js in
-// headless Chromium, and compares the results with the same checks run in Node.
-// Run with `npm run test:browser` (needs a Playwright Chromium: `npx playwright-core install chromium`).
+// Browser test: runs test/browser-checks.js in headless Chromium two ways, and compares the
+// results with the same checks run in Node:
+// - bundled: the package bundled for the browser with esbuild, as an app would use it;
+// - no bundler: dist/poker-extval.mjs imported by a plain <script type="module"> page.
+// Run with `npm run test:browser`, which builds dist/ first (needs a Playwright Chromium:
+// `npx playwright-core install chromium`).
+const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 const esbuild = require('esbuild');
@@ -32,19 +36,47 @@ async function main() {
 
   const browser = await chromium.launch();
   try {
-    const page = await browser.newPage();
-    const pageErrors = [];
-    page.on('pageerror', error => pageErrors.push(error.message));
-    await page.setContent('<!doctype html><html><body></body></html>');
-    await page.addScriptTag({ content: outputFiles[0].text });
-    await page.waitForFunction(() => window.__results, null, { timeout: 60000 });
-    const actual = await page.evaluate(() => window.__results);
-    assert.deepStrictEqual(pageErrors, [], `Page errors: ${pageErrors.join('; ')}`);
-    assert.deepStrictEqual(actual, expected);
-    console.log(`Browser test passed: ${Object.keys(expected).length} checks match Node in ${browser.version()}`);
+    const bundled = await runPage(browser, page => page.addScriptTag({ content: outputFiles[0].text }));
+    assert.deepStrictEqual(bundled, expected);
+    console.log(`Browser test passed (bundled): ${Object.keys(expected).length} checks match Node in ${browser.version()}`);
+
+    const noBundler = await runPage(browser, async page => {
+      // Serve the package's files from a made-up origin, so the page imports them by URL
+      const origin = 'http://extval.test';
+      const checks = `const module = {};\n${fs.readFileSync(path.join(__dirname, 'browser-checks.js'), 'utf8')}\nexport default module.exports;`;
+      const html = `<!doctype html><html><body><script type="module">
+        import * as lib from './dist/poker-extval.mjs';
+        import checks from './checks.mjs';
+        checks(lib).then(r => { window.__results = r; }, e => { window.__results = { fatal: e.message }; });
+      </script></body></html>`;
+      await page.route(`${origin}/**`, route => {
+        const file = new URL(route.request().url()).pathname;
+        if (file === '/') return route.fulfill({ contentType: 'text/html', body: html });
+        if (file === '/checks.mjs') return route.fulfill({ contentType: 'text/javascript', body: checks });
+        if (file === '/dist/poker-extval.mjs') return route.fulfill({ contentType: 'text/javascript', body: fs.readFileSync(path.join(root, 'dist/poker-extval.mjs'), 'utf8') });
+        return route.fulfill({ status: 404, body: 'Not found' });
+      });
+      await page.goto(`${origin}/`);
+    }, false);
+    assert.deepStrictEqual(noBundler, expected);
+    console.log(`Browser test passed (no bundler, dist/poker-extval.mjs): ${Object.keys(expected).length} checks match Node`);
   } finally {
     await browser.close();
   }
+}
+
+/** Opens a page, loads the checks with `load`, and returns their results. */
+async function runPage(browser, load, blank = true) {
+  const page = await browser.newPage();
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+  if (blank) await page.setContent('<!doctype html><html><body></body></html>');
+  await load(page);
+  await page.waitForFunction(() => window.__results, null, { timeout: 60000 });
+  const results = await page.evaluate(() => window.__results);
+  assert.deepStrictEqual(pageErrors, [], `Page errors: ${pageErrors.join('; ')}`);
+  await page.close();
+  return results;
 }
 
 main().catch(error => {

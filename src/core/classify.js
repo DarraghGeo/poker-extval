@@ -12,7 +12,7 @@
  */
 
 const BitVal = require('poker-bitvaljs');
-const { POP, HIGH, LOW, STRAIGHT5, WINDOWS, DRAW_WINDOWS, STRAIGHT_WINDOW, WHEEL, ROYAL } = require('./tables');
+const { POP, HIGH, LOW, STRAIGHT5, WINDOWS, DRAW_WINDOWS, BACKDOOR_WINDOWS, STRAIGHT_WINDOW, WHEEL, ROYAL } = require('./tables');
 const B = require('./bits');
 
 let bitval = null;
@@ -61,16 +61,17 @@ class Hand {
     this.boardMask = 0;
     this.boardHigh = -1;
     this.boardLow = -1;
-    /** Hole card category bits, the same for every five. */
+    /** The board's own suit lanes (the full hand less the hole cards). */
+    this.bl0 = 0; this.bl1 = 0; this.bl2 = 0; this.bl3 = 0;
+    /** Per suit, the highest rank not on the board: the nut card of a flush draw (-1 for none). */
+    this.nut0 = -1; this.nut1 = -1; this.nut2 = -1; this.nut3 = -1;
+    /** Hole card category bits (low word), the same for every five. */
     this.holeLo = 0;
-    this.holeHi = 0;
     // The result of the last classification
     this.lo = 0;
     this.hi = 0;
     this.strength = 0;
     this.score = 0;
-    /** The best five's own flags (strict, before whole-hand draws replace its draws). */
-    this.fiveLo = 0;
     /** True when the draws are the whole hand's (strict, 6+ cards). */
     this.whole = false;
     // Positions of the best five, ascending
@@ -147,7 +148,9 @@ function setHole(x, hole0, hole1) {
   x.boardMask = board;
   x.boardHigh = HIGH[board];
   x.boardLow = LOW[board];
-  let lo = 0, hi = 0;
+  x.bl0 = x.fl0 & ~h0; x.bl1 = x.fl1 & ~h1; x.bl2 = x.fl2 & ~h2; x.bl3 = x.fl3 & ~h3;
+  x.nut0 = HIGH[0x1fff & ~x.bl0]; x.nut1 = HIGH[0x1fff & ~x.bl1]; x.nut2 = HIGH[0x1fff & ~x.bl2]; x.nut3 = HIGH[0x1fff & ~x.bl3];
+  let lo = 0;
   if (hasHole) {
     let over = 0, middle = 0, under = 0;
     for (const c of [hole0, hole1]) {
@@ -160,13 +163,12 @@ function setHole(x, hole0, hole1) {
     if (over > 0) lo |= B.OVERCARD;
     if (over === 2) lo |= B.TWO_OVERCARDS;
     if (over === 1 && middle === 1) lo |= B.OVER_AND_MIDDLE;
-    if (over === 1 && under === 1) hi |= B.OVER_AND_UNDER;
-    if (middle === 2) hi |= B.TWO_MIDDLE;
-    if (middle === 1 && under === 1) hi |= B.MIDDLE_AND_UNDER;
-    if (under === 2) hi |= B.TWO_UNDER;
+    if (over === 1 && under === 1) lo |= B.OVER_AND_UNDER;
+    if (middle === 2) lo |= B.TWO_MIDDLE;
+    if (middle === 1 && under === 1) lo |= B.MIDDLE_AND_UNDER;
+    if (under === 2) lo |= B.TWO_UNDER;
   }
   x.holeLo = lo;
-  x.holeHi = hi;
   return x;
 }
 
@@ -184,24 +186,77 @@ function position(x, r) {
 /**
  * Straight draw bits for a rank mask, by outs: two or more out ranks is open-ended, one inside.
  * With hole cards a completion only counts when its four ranks include one the board lacks.
+ * Open-ended draws whose completions never share their four ranks are double gutshots
+ * (9-7-6-5-3), unlike four in a row (9-8-7-6). With no straight draw, three ranks of a straight
+ * (by the same hole card rule) are a backdoor straight draw.
  */
 function straightDrawBits(x, m) {
-  let windows = DRAW_WINDOWS[m];
-  if (!windows) return 0;
-  let outs = 0;
-  let wheel = false;
   const hasHole = x.hasHole;
   const board = x.boardMask;
+  let windows = DRAW_WINDOWS[m];
+  let outs = 0;
+  let wheel = false;
+  let shared = false;
+  let lastWindow = -2;
+  let lastPresent = 0;
   for (; windows; windows &= windows - 1) {
     const w = 31 - Math.clz32(windows & -windows);
     const present = m & WINDOWS[w];
     if (hasHole && (present & ~board) === 0) continue;
     outs |= WINDOWS[w] & ~present;
     if (w === 0) wheel = true;
+    // Only neighbouring windows can hold the same four ranks
+    if (w === lastWindow + 1 && present === lastPresent) shared = true;
+    lastWindow = w;
+    lastPresent = present;
   }
-  if (!outs) return 0;
-  if (POP[outs] >= 2) return B.STRAIGHT_DRAW | B.OPEN_ENDED | (wheel ? B.OPEN_ENDED_WHEEL : 0);
-  return B.STRAIGHT_DRAW | B.INSIDE | (wheel ? B.INSIDE_WHEEL : 0);
+  if (outs) {
+    if (POP[outs] >= 2) return B.STRAIGHT_DRAW | B.OPEN_ENDED | (wheel ? B.OPEN_ENDED_WHEEL : 0) | (shared ? 0 : B.DOUBLE_GUTSHOT);
+    return B.STRAIGHT_DRAW | B.INSIDE | (wheel ? B.INSIDE_WHEEL : 0);
+  }
+  for (let backdoors = BACKDOOR_WINDOWS[m]; backdoors; backdoors &= backdoors - 1) {
+    const w = 31 - Math.clz32(backdoors & -backdoors);
+    if (!hasHole || (m & WINDOWS[w] & ~board) !== 0) return B.BACKDOOR_STRAIGHT;
+  }
+  return 0;
+}
+
+/**
+ * Whether a suit lane holds a flush draw of n cards: 0 no, 1 yes, 2 yes and the nut one (a hole
+ * card in the lane is the highest card of the suit the board lacks). With hole cards the lane
+ * must hold one.
+ */
+function suitDraw(x, lane, holeLane, nut, n) {
+  if (POP[lane] !== n) return 0;
+  if (!x.hasHole) return 1;
+  const mine = lane & holeLane;
+  if (!mine) return 0;
+  return nut >= 0 && ((mine >> nut) & 1) ? 2 : 1;
+}
+
+/**
+ * Every draw bit (the high word) of some cards given as suit lanes: flush draws unless
+ * `noFlush`, straight draws unless `noStraight`, the combos, then the street rules.
+ */
+function drawBits(x, s, h, d, c, noFlush, noStraight) {
+  let hi = 0;
+  if (!noFlush) {
+    const fd = Math.max(suitDraw(x, s, x.hl0, x.nut0, 4), suitDraw(x, h, x.hl1, x.nut1, 4),
+      suitDraw(x, d, x.hl2, x.nut2, 4), suitDraw(x, c, x.hl3, x.nut3, 4));
+    if (fd) {
+      hi |= fd === 2 ? B.FLUSH_DRAW | B.NUT_FLUSH_DRAW : B.FLUSH_DRAW;
+    } else {
+      const bd = Math.max(suitDraw(x, s, x.hl0, x.nut0, 3), suitDraw(x, h, x.hl1, x.nut1, 3),
+        suitDraw(x, d, x.hl2, x.nut2, 3), suitDraw(x, c, x.hl3, x.nut3, 3));
+      if (bd) hi |= bd === 2 ? B.BACKDOOR | B.NUT_BACKDOOR : B.BACKDOOR;
+    }
+  }
+  if (!noStraight) hi |= straightDrawBits(x, s | h | d | c);
+  if ((hi & B.FLUSH_DRAW) && (hi & B.STRAIGHT_DRAW)) hi |= B.COMBO_DRAW;
+  if ((hi & B.BACKDOOR) && (hi & B.BACKDOOR_STRAIGHT)) hi |= B.BACKDOOR_COMBO;
+  if (x.street === RIVER) return 0;
+  if (x.street === TURN) hi &= ~B.BACKDOOR_BITS;
+  return hi;
 }
 
 /** The high word and strength of the last classifyFive call. */
@@ -209,8 +264,9 @@ let lastHi = 0;
 let lastStrength = 0;
 
 /**
- * Flags of five cards (given as their four suit lanes) in the hand `x`. Returns the low word;
- * the high word and strength are left in lastHi and lastStrength.
+ * Flags of five cards (given as their four suit lanes) in the hand `x`. Returns the low word
+ * (made hands, labels, hole card categories); the high word (draws) and strength are left in
+ * lastHi and lastStrength.
  *
  * @param {Hand} x - The hand
  * @param {number} s - Spades lane of the five
@@ -291,20 +347,8 @@ function classifyFive(x, s, h, d, c, strict) {
     strength = 7;
   }
 
-  // Flush draws must use a hole card when hole cards are supplied
-  if (!flush) {
-    if ((POP[s] === 4 && (!hasHole || (s & x.hl0))) || (POP[h] === 4 && (!hasHole || (h & x.hl1))) ||
-        (POP[d] === 4 && (!hasHole || (d & x.hl2))) || (POP[c] === 4 && (!hasHole || (c & x.hl3)))) {
-      lo |= B.FLUSH_DRAW;
-    } else if ((POP[s] === 3 && (!hasHole || (s & x.hl0))) || (POP[h] === 3 && (!hasHole || (h & x.hl1))) ||
-        (POP[d] === 3 && (!hasHole || (d & x.hl2))) || (POP[c] === 3 && (!hasHole || (c & x.hl3)))) {
-      lo |= B.BACKDOOR;
-    }
-  }
-  if (!straight) lo |= straightDrawBits(x, m);
-  if ((lo & B.FLUSH_DRAW) && (lo & B.STRAIGHT_DRAW)) lo |= B.COMBO_DRAW;
-  if (x.street === RIVER) lo &= ~B.DRAW_BITS;
-  else if (x.street === TURN) lo &= ~B.BACKDOOR;
+  // Draws (flush draws must use a hole card when hole cards are supplied)
+  let hi = drawBits(x, s, h, d, c, flush, straight);
 
   if (pairRank >= 0) {
     if (hasHole) {
@@ -315,15 +359,14 @@ function classifyFive(x, s, h, d, c, strict) {
   }
 
   lo |= x.holeLo;
-  let hi = x.holeHi;
-  if (strength === 1) hi |= B.HIGH_CARD;
+  if (strength === 1) lo |= B.HIGH_CARD;
 
   if (strict) {
     lo = (lo & ~B.MADE_BITS) | B.STRENGTH_BIT[strength];
     if (strength !== 2) lo &= ~B.PAIR_LABEL_BITS;
     if (strength !== 3) lo &= ~B.TWO_PAIR_LABEL_BITS;
     if (strength !== 4) lo &= ~B.TRIPS_LABEL_BITS;
-    if (strength >= 6) lo &= ~B.STRAIGHT_DRAW_BITS;
+    if (strength >= 6) hi &= ~B.STRAIGHT_DRAW_BITS;
   }
   lastHi = hi;
   lastStrength = strength;
@@ -335,23 +378,7 @@ function classifyFive(x, s, h, d, c, strict) {
  * from a straight, dropped once the made hand beats them, with the street rules.
  */
 function wholeHandDraws(x, strength) {
-  let lo = 0;
-  if (strength < 6) {
-    const hasHole = x.hasHole;
-    const { fl0, fl1, fl2, fl3 } = x;
-    if ((POP[fl0] === 4 && (!hasHole || (fl0 & x.hl0))) || (POP[fl1] === 4 && (!hasHole || (fl1 & x.hl1))) ||
-        (POP[fl2] === 4 && (!hasHole || (fl2 & x.hl2))) || (POP[fl3] === 4 && (!hasHole || (fl3 & x.hl3)))) {
-      lo |= B.FLUSH_DRAW;
-    } else if ((POP[fl0] === 3 && (!hasHole || (fl0 & x.hl0))) || (POP[fl1] === 3 && (!hasHole || (fl1 & x.hl1))) ||
-        (POP[fl2] === 3 && (!hasHole || (fl2 & x.hl2))) || (POP[fl3] === 3 && (!hasHole || (fl3 & x.hl3)))) {
-      lo |= B.BACKDOOR;
-    }
-  }
-  if (strength < 5) lo |= straightDrawBits(x, x.fullMask);
-  if ((lo & B.FLUSH_DRAW) && (lo & B.STRAIGHT_DRAW)) lo |= B.COMBO_DRAW;
-  if (x.street === RIVER) lo = 0;
-  else if (x.street === TURN) lo &= ~B.BACKDOOR;
-  return lo;
+  return drawBits(x, x.fl0, x.fl1, x.fl2, x.fl3, strength >= 6, strength >= 5);
 }
 
 // Per-position suit lanes of the hand being searched (one bit in one lane per card)
@@ -545,7 +572,7 @@ function fiveLanes(x) {
 
 /**
  * Strict classification: the best five and its flags, with the whole hand's draws on 6+ cards.
- * Fills in x.lo, x.hi, x.strength, x.score, x.fiveLo, x.whole and x.p0 ... x.p4.
+ * Fills in x.lo, x.hi, x.strength, x.score, x.whole and x.p0 ... x.p4.
  *
  * @param {Hand} x - The hand
  * @returns {Hand} x
@@ -554,9 +581,7 @@ function classifyStrict(x) {
   if (x.n === 5) {
     x.p0 = 0; x.p1 = 1; x.p2 = 2; x.p3 = 3; x.p4 = 4;
     x.score = -1;
-    const lo = classifyFive(x, x.fl0, x.fl1, x.fl2, x.fl3, true);
-    x.lo = lo;
-    x.fiveLo = lo;
+    x.lo = classifyFive(x, x.fl0, x.fl1, x.fl2, x.fl3, true);
     x.hi = lastHi;
     x.strength = lastStrength;
     x.whole = false;
@@ -569,11 +594,9 @@ function classifyStrict(x) {
     x.score = bestFive(x);
   }
   fiveLanes(x);
-  const lo = classifyFive(x, FIVE_LANES[0], FIVE_LANES[1], FIVE_LANES[2], FIVE_LANES[3], true);
-  x.fiveLo = lo;
-  x.hi = lastHi;
+  x.lo = classifyFive(x, FIVE_LANES[0], FIVE_LANES[1], FIVE_LANES[2], FIVE_LANES[3], true);
   x.strength = lastStrength;
-  x.lo = (lo & ~B.DRAW_BITS) | wholeHandDraws(x, lastStrength);
+  x.hi = wholeHandDraws(x, lastStrength);
   x.whole = true;
   return x;
 }
@@ -633,9 +656,10 @@ function classifyLoose(x) {
   if (strongest >= 5) drop |= B.STRAIGHT_DRAW_BITS;
   if (strongest >= 6) drop |= B.FLUSH_DRAW_BITS;
   for (let k = 0; k < count; k++) {
-    let w = lo[k] & ~drop & ~B.COMBO_DRAW;
+    let w = hi[k] & ~drop & ~B.COMBO_BITS;
     if ((w & B.FLUSH_DRAW) && (w & B.STRAIGHT_DRAW)) w |= B.COMBO_DRAW;
-    lo[k] = w;
+    if ((w & B.BACKDOOR) && (w & B.BACKDOOR_STRAIGHT)) w |= B.BACKDOOR_COMBO;
+    hi[k] = w;
   }
   return { five, lo, hi, strength, count };
 }

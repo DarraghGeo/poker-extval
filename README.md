@@ -2,7 +2,7 @@
 
 A Texas Hold'em hand evaluator for the browser and Node.js. Give it 5 to 7 cards (board plus hole cards) and it tells you what the player holds: the made hand, where it sits on the board (top pair, over pair, bottom set), every draw that uses the player's cards, how the hole cards rank against the board, and which of a villain's combos the known cards block. It also compares hands and calculates equity.
 
-Version 6 is a rewrite for speed: the same results as 5.2, byte for byte, 5 to 12 times faster to evaluate a hand and 4 to 7 times faster to analyse one, plus a [core API](#core-api) that classifies a whole range on one board in a fraction of a microsecond per combo. See [Upgrading from 5.x](#upgrading-from-5x).
+Version 6 is a rewrite for speed: the same results as 5.2, byte for byte (plus nut flush, double gutshot and backdoor straight draws), 5 to 12 times faster to evaluate a hand and 4 to 7 times faster to analyse one, plus a [core API](#core-api) that classifies a whole range on one board in a fraction of a microsecond per combo. See [Upgrading from 5.x](#upgrading-from-5x).
 
 ## Contents
 
@@ -34,12 +34,28 @@ npm install poker-extval
 npm install poker-extval@next   # the 6.0 prerelease
 ```
 
-Works in the browser through any bundler (tested with esbuild, webpack and Vite) and in Node.js 20.19+ or 22.13+. Needs poker-bitvaljs 1.9.0 or later (installed automatically). Node needs those versions because range parsing uses [poker-rangeman](https://github.com/DarraghGeo/poker-rangeman), an ES module this CommonJS package loads with `require`; on older Node everything except ranges and equity still works.
+Works in the browser, through any bundler (tested with esbuild, webpack and Vite) or [with none](#in-the-browser-without-a-bundler), and in Node.js 20.19+ or 22.13+. Needs poker-bitvaljs 1.9.0 or later (installed automatically). Node needs those versions because range parsing uses [poker-rangeman](https://github.com/DarraghGeo/poker-rangeman), an ES module this CommonJS package loads with `require`; on older Node everything except ranges and equity still works.
 
 ```javascript
 import { evaluate } from 'poker-extval';           // bundler / ES modules
 const { evaluate } = require('poker-extval');      // CommonJS
 ```
+
+### In the browser without a bundler
+
+`dist/poker-extval.mjs` is a self-contained ES module, with poker-bitvaljs and poker-rangeman built in, for pages that load plain ES modules. Serve it with your files, or load it from a CDN:
+
+```html
+<script type="module">
+  import { evaluate, board } from './poker-extval.mjs';
+  // or: from 'https://cdn.jsdelivr.net/npm/poker-extval@next/dist/poker-extval.mjs'
+
+  const result = evaluate(['4h', '9h', '7h', 'Ah', 'Js'], { holeCards: ['Ah', 'Js'] });
+  console.log(result.isNutFlushDraw); // true
+</script>
+```
+
+`dist/poker-extval.min.mjs` is the same, minified (about 105 KB). In Node and in bundlers, `import ... from 'poker-extval'` uses this build too; `require` uses the CommonJS one.
 
 ## Quick start
 
@@ -163,14 +179,19 @@ Whether the strongest made hand uses a hole card (for high card: whether a hole 
 | --- | --- |
 | `isFlushDraw` | Four of a suit |
 | `isBackdoorFlushDraw` | Three of a suit, flop only |
+| `isNutFlushDraw` | A flush draw holding the best card of the suit the board lacks (the A♥, or the K♥ with the A♥ on the board), so hitting makes the nut flush. Needs `holeCards` |
+| `isNutBackdoorFlushDraw` | The same, for a backdoor flush draw |
 | `isOpenEndedStraightDraw` | Two or more ranks complete a straight (8 outs). Includes double gutshots such as K-J-T-9-7 (a Q or an 8) |
 | `isInsideStraightDraw` | Exactly one rank completes a straight (4 outs). Includes one-ended draws such as A-K-Q-J and A-2-3-4 |
-| `isStraightDraw` | Either of the above |
+| `isDoubleGutshot` | An open-ended draw with no four in a row: two different gutshots, as K-J-T-9-7 or 9-7-6-5-3 (but not 9-8-7-6) |
+| `isStraightDraw` | Any of the above straight draws |
+| `isBackdoorStraightDraw` | Flop only, with no straight draw: three ranks of a straight, so two more cards can complete it, as K-J-T or 8 with J-T |
 | `isOpenEndedStraightDrawWheel` | An open-ended draw where one completion is the wheel |
 | `isInsideStraightDrawWheel` | An inside draw where the completion is the wheel |
 | `isComboDraw` | A flush draw and a straight draw |
+| `isBackdoorComboDraw` | A backdoor flush draw and a backdoor straight draw |
 
-With `holeCards`, a draw must be the player's: a flush draw must include a hole card, and a straight draw must use a rank the board does not have. 2-2 on 9-8-7-6 has no straight draw, and A♦-Q♦ on K♠-7♠-2♠ has no backdoor flush draw. Paired cards count once, so 5-4 on 8-8-6 is a pair and an inside straight draw.
+With `holeCards`, a draw must be the player's: a flush draw must include a hole card, and a straight draw (backdoor ones too) must use a rank the board does not have. 2-2 on 9-8-7-6 has no straight draw, and A♦-Q♦ on K♠-7♠-2♠ has no backdoor flush draw. Paired cards count once, so 5-4 on 8-8-6 is a pair and an inside straight draw.
 
 ### Hole cards against the board
 
@@ -240,7 +261,7 @@ There are three views, each `{ unblocked, blocked }`:
 
 `unblocked` lists the combos. `blocked` groups the blocked combos, with every key always present:
 
-- A combo villain could otherwise be dealt is listed under its made hand (the best five of board + combo, `isRoyalFlush` to `isHighCard`) and under every draw it holds (`isFlushDraw`, `isBackdoorFlushDraw`, `isOpenEndedStraightDraw`, `isInsideStraightDraw`, `isStraightDraw`, `isComboDraw`). Draws follow the same rules as hero's, with the combo as villain's hole cards.
+- A combo villain could otherwise be dealt is listed under its made hand (the best five of board + combo, `isRoyalFlush` to `isHighCard`) and under every draw it holds (`isFlushDraw`, `isBackdoorFlushDraw`, `isNutFlushDraw`, `isNutBackdoorFlushDraw`, `isOpenEndedStraightDraw`, `isInsideStraightDraw`, `isDoubleGutshot`, `isStraightDraw`, `isBackdoorStraightDraw`, `isComboDraw`, `isBackdoorComboDraw`). Draws follow the same rules as hero's, with the combo as villain's hole cards.
 - A combo containing a board card cannot be dealt at all, so it is listed under `onBoard`.
 
 Without `holeCards`, every card is treated as board, so `heroBlocks` blocks nothing. In non-strict mode each combination gets its own copy.
@@ -378,7 +399,7 @@ for (let i = 0; i < all.count; i++) {
 | `board(cards, { street })` | A board of 3 to 5 cards (strings or card numbers) |
 | `.classify(hole)` | `{ lo, hi, strength, score, five, category, is(flag), flags() }` |
 | `.classifyAll(combos)` | `{ count, lo, hi, strength, score, blocked }`, each a typed array indexed like `combos`; combos are `'AhKd'` strings or card numbers in pairs |
-| `FLAGS` | Flag index by name, in the evaluation's order. Flag `i` is bit `i % 32` of `lo` (flags 0-31) or `hi` (32-36) |
+| `FLAGS` | Flag index by name, in the evaluation's order. Read a flag with `hasFlag(lo, hi, FLAGS.name)`: `lo` holds the made hands, position labels and hole card categories, `hi` every draw (so `hi === 0` means no draws) |
 | `hasFlag(lo, hi, flag)` | Whether a flag index is set |
 | `cardIndex(card)`, `cardString(n)` | Card strings to card numbers (`rank * 4 + suit`, `'2s'` = 0 ... `'Ac'` = 51) and back |
 
@@ -454,13 +475,15 @@ Reading `keyCards` or `kickerCards` adds about 5 µs to a 7-card evaluation, the
 
 ## Upgrading from 5.x
 
-Version 6 returns exactly what 5.2.0 returns: the same keys, values and property order, the same errors word for word, and the same lazy card lists. This was checked on hundreds of thousands of random hands, strict and non-strict, with and without hole cards, villain ranges and streets, and on 1,000 `analyzeHand` spots. Nothing needs to change to upgrade. The differences:
+Apart from five new draw flags, version 6 returns exactly what 5.2.0 returns: the same keys, values and property order, the same errors word for word, and the same lazy card lists. This was checked on hundreds of thousands of random hands, strict and non-strict, with and without hole cards, villain ranges and streets, and on 1,000 `analyzeHand` spots. The differences:
 
+- **New draw flags:** `isNutFlushDraw`, `isNutBackdoorFlushDraw`, `isDoubleGutshot`, `isBackdoorStraightDraw` and `isBackdoorComboDraw` (see [Draws](#draws)). Each evaluation, its `keyCards` and `kickerCards`, and `villainRange`'s `blocked` groups have the five extra keys, placed beside the draws they refine. Code that lists every key (snapshots, `Object.keys` checks) sees them; nothing else changes.
+- **ES-module build:** `import` gets `dist/poker-extval.mjs` ([see above](#in-the-browser-without-a-bundler)). The package now has an `exports` map, so only the package itself, `dist/*` and `package.json` can be imported; files under `src/` can no longer be required directly.
 - **New:** the [core API](#core-api) (`board`, `FLAGS`, `hasFlag`, `cardIndex`, `cardString`).
 - **Computed up front:** `usesHoleCards` and `evaluate()`'s `rank` are cheap now, so they are plain values rather than lazy properties. Their values are unchanged.
 - **Hidden state:** evaluation objects keep their lazy state under a non-enumerable symbol. `JSON.stringify`, `Object.keys`, spread, `structuredClone` and equality checks never see it; `Reflect.ownKeys` does.
 - **Range cache:** `parseRange` remembers the last 64 ranges it parsed. It still returns a new array every time.
-- **Internals removed:** `src/analyze.js` is gone, and `src/score.js` keeps only `scoreCards` and `compareScores`. Only code that imported files under `src/` directly is affected.
+- **Internals removed:** `src/analyze.js` is gone, and `src/score.js` keeps only `scoreCards` and `compareScores`.
 
 ## Testing
 
@@ -474,11 +497,11 @@ Runs the Jest suite (nearly 900 tests) and type-checks `index.d.ts`. Alongside t
 npm run test:browser
 ```
 
-Bundles the package for the browser with esbuild, runs every public function in headless Chromium, and checks the results match Node. It needs a Playwright Chromium (`npx playwright-core install chromium`).
+Bundles the package for the browser with esbuild, runs every public function in headless Chromium, and checks the results match Node. It also loads `dist/poker-extval.mjs` into a plain page with `<script type="module">` and no bundler, and checks that against Node too. It builds `dist/` first and needs a Playwright Chromium (`npx playwright-core install chromium`).
 
 ## Releasing
 
-Pushing to `main` publishes to npm via GitHub Actions (`.github/workflows/publish.yml`), using npm trusted publishing so no token is stored. A push publishes only when it changes the package's code (`evaluator.js`, `src/`, `index.d.ts`) or `package.json`; changes to docs or tests alone do not. A release runs the tests, bumps the patch version (unless `package.json` already holds a version that is not on npm yet, e.g. a manual `npm version minor --no-git-tag-version`), commits the bump back to `main`, tags it `v<version>` and publishes. The workflow can also be started by hand from the Actions tab.
+Pushing to `main` publishes to npm via GitHub Actions (`.github/workflows/publish.yml`), using npm trusted publishing so no token is stored. A push publishes only when it changes the package's code (`evaluator.js`, `src/`, `index.d.ts`) or `package.json`; changes to docs or tests alone do not. A release runs the tests, builds `dist/` (the `prepack` script), bumps the patch version (unless `package.json` already holds a version that is not on npm yet, e.g. a manual `npm version minor --no-git-tag-version`), commits the bump back to `main`, tags it `v<version>` and publishes. The workflow can also be started by hand from the Actions tab.
 
 Prereleases come from the `rewrite/v6` branch the same way. Its versions are prereleases such as `6.0.0-beta.0`; each release bumps the last number and publishes under npm's `next` tag, so `npm install poker-extval` still installs the latest release from `main`. The workflow refuses a release version on a prerelease branch, and a prerelease version on `main`.
 

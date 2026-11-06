@@ -14,7 +14,7 @@
  */
 
 const { ALL_FLAGS, DRAWS, HOLE_CARD_CATEGORIES } = require('../flags');
-const { DRAW_WINDOWS, WINDOWS, HIGH, WHEEL } = require('./tables');
+const { DRAW_WINDOWS, BACKDOOR_WINDOWS, WINDOWS, HIGH, WHEEL } = require('./tables');
 const { FLAGS, hasFlag } = require('./bits');
 
 const DRAW_SET = new Set(DRAWS);
@@ -98,6 +98,36 @@ function straightDrawCards(x, std, wheelOnly) {
   return out;
 }
 
+/** One card per rank of a rank mask from `std` (a hole card where there are two), high to low. */
+function oneCardPerRank(x, std, ranks, aceLow) {
+  const chosen = new Int8Array(13).fill(-1);
+  for (const p of std) {
+    const r = rankAt(x, p);
+    if (!((ranks >> r) & 1)) continue;
+    if (chosen[r] < 0 || (!isHole(x, chosen[r]) && isHole(x, p))) chosen[r] = p;
+  }
+  const out = [];
+  for (let r = 12; r >= 0; r--) if (chosen[r] >= 0) out.push(chosen[r]);
+  if (aceLow && chosen[12] >= 0) out.push(out.shift());
+  return out;
+}
+
+/**
+ * The cards behind a backdoor straight draw of the cards `std`: the three ranks of the highest
+ * straight it can make with two more cards (by the hole card rule), one card each, high to low
+ * (the Ace last for the wheel).
+ */
+function backdoorStraightCards(x, std) {
+  const mask = maskOf(x, std);
+  for (let w = 9; w >= 0; w--) {
+    if (!((BACKDOOR_WINDOWS[mask] >> w) & 1)) continue;
+    const present = mask & WINDOWS[w];
+    if (x.hasHole && (present & ~x.boardMask) === 0) continue;
+    return oneCardPerRank(x, std, present, w === 0);
+  }
+  return [];
+}
+
 /** Positions of `std` of one suit. */
 const ofSuit = (x, std, suit) => std.filter(p => suitAt(x, p) === suit);
 /** Positions of `std` of one rank. */
@@ -155,16 +185,23 @@ function cardLists(x, names, holeOrder, five, lo, hi, whole) {
   const fiveDraws = () => {
     if (drawCache) return drawCache;
     const flush = () => ofSuit(x, std, suitWithCount(x, five, 4, false));
+    const backdoor = () => ofSuit(x, std, suitWithCount(x, five, 3, false));
     const straightDraw = () => straightDrawCards(x, std, false);
+    const backdoorStraight = () => backdoorStraightCards(x, std);
     return (drawCache = {
       isFlushDraw: flush,
-      isBackdoorFlushDraw: () => ofSuit(x, std, suitWithCount(x, five, 3, false)),
+      isBackdoorFlushDraw: backdoor,
+      isNutFlushDraw: flush,
+      isNutBackdoorFlushDraw: backdoor,
       isOpenEndedStraightDraw: straightDraw,
       isInsideStraightDraw: straightDraw,
+      isDoubleGutshot: straightDraw,
       isStraightDraw: straightDraw,
+      isBackdoorStraightDraw: backdoorStraight,
       isOpenEndedStraightDrawWheel: () => straightDrawCards(x, std, true),
       isInsideStraightDrawWheel: () => straightDrawCards(x, std, true),
-      isComboDraw: () => union(x, flush(), straightDraw())
+      isComboDraw: () => union(x, flush(), straightDraw()),
+      isBackdoorComboDraw: () => union(x, backdoor(), backdoorStraight())
     });
   };
   let wholeCache = null;
@@ -174,15 +211,22 @@ function cardLists(x, names, holeOrder, five, lo, hi, whole) {
     const sd = flagOn('isStraightDraw') ? straightDrawCards(x, fullStd, false) : [];
     const wheel = flagOn('isOpenEndedStraightDrawWheel') || flagOn('isInsideStraightDrawWheel') ? straightDrawCards(x, fullStd, true) : [];
     const flush = flagOn('isFlushDraw') ? ofSuit(x, fullStd, suitWithCount(x, all, 4, true)) : [];
+    const backdoor = flagOn('isBackdoorFlushDraw') ? ofSuit(x, fullStd, suitWithCount(x, all, 3, true)) : [];
+    const backdoorStraight = flagOn('isBackdoorStraightDraw') ? backdoorStraightCards(x, fullStd) : [];
     return (wholeCache = {
       isFlushDraw: flush,
-      isBackdoorFlushDraw: flagOn('isBackdoorFlushDraw') ? ofSuit(x, fullStd, suitWithCount(x, all, 3, true)) : [],
+      isBackdoorFlushDraw: backdoor,
+      isNutFlushDraw: flagOn('isNutFlushDraw') ? flush : [],
+      isNutBackdoorFlushDraw: flagOn('isNutBackdoorFlushDraw') ? backdoor : [],
       isOpenEndedStraightDraw: flagOn('isOpenEndedStraightDraw') ? sd : [],
       isInsideStraightDraw: flagOn('isInsideStraightDraw') ? sd : [],
+      isDoubleGutshot: flagOn('isDoubleGutshot') ? sd : [],
       isStraightDraw: sd,
+      isBackdoorStraightDraw: backdoorStraight,
       isOpenEndedStraightDrawWheel: flagOn('isOpenEndedStraightDrawWheel') ? wheel : [],
       isInsideStraightDrawWheel: flagOn('isInsideStraightDrawWheel') ? wheel : [],
-      isComboDraw: flagOn('isComboDraw') ? union(x, flush, sd) : []
+      isComboDraw: flagOn('isComboDraw') ? union(x, flush, sd) : [],
+      isBackdoorComboDraw: flagOn('isBackdoorComboDraw') ? union(x, backdoor, backdoorStraight) : []
     });
   };
 

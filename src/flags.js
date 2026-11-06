@@ -27,23 +27,25 @@ const PAIR_LABELS = Object.freeze(['isOverPair', 'isTopPair', 'isMiddlePair', 'i
 const TWO_PAIR_LABELS = Object.freeze(['isTopAndMiddlePair', 'isTopAndBottomPair', 'isMiddleAndBottomPair']);
 const THREE_OF_A_KIND_LABELS = Object.freeze(['isTopThreeOfAKind', 'isMiddleThreeOfAKind', 'isBottomThreeOfAKind']);
 
-/** Straight draw flags, including the wheel-specific ones. */
+/** Straight draw flags, including the wheel-specific ones and backdoor straight draws. */
 const STRAIGHT_DRAWS = Object.freeze([
   'isOpenEndedStraightDraw',
   'isInsideStraightDraw',
+  'isDoubleGutshot',
   'isStraightDraw',
+  'isBackdoorStraightDraw',
   'isOpenEndedStraightDrawWheel',
   'isInsideStraightDrawWheel'
 ]);
 
-/** Flush draw flags. */
-const FLUSH_DRAWS = Object.freeze(['isFlushDraw', 'isBackdoorFlushDraw']);
+/** Flush draw flags, including the nut variants. */
+const FLUSH_DRAWS = Object.freeze(['isFlushDraw', 'isBackdoorFlushDraw', 'isNutFlushDraw', 'isNutBackdoorFlushDraw']);
 
 /**
  * Every draw flag. On 6+ cards draws describe the whole hand rather than one 5-card combination,
  * so strict mode collects them from every combination.
  */
-const DRAWS = Object.freeze([...FLUSH_DRAWS, ...STRAIGHT_DRAWS, 'isComboDraw']);
+const DRAWS = Object.freeze([...FLUSH_DRAWS, ...STRAIGHT_DRAWS, 'isComboDraw', 'isBackdoorComboDraw']);
 
 /**
  * Draw flags used when grouping villain combos. The wheel draw flags are left out since wheel
@@ -52,10 +54,15 @@ const DRAWS = Object.freeze([...FLUSH_DRAWS, ...STRAIGHT_DRAWS, 'isComboDraw']);
 const VILLAIN_DRAWS = Object.freeze([
   'isFlushDraw',
   'isBackdoorFlushDraw',
+  'isNutFlushDraw',
+  'isNutBackdoorFlushDraw',
   'isOpenEndedStraightDraw',
   'isInsideStraightDraw',
+  'isDoubleGutshot',
   'isStraightDraw',
-  'isComboDraw'
+  'isBackdoorStraightDraw',
+  'isComboDraw',
+  'isBackdoorComboDraw'
 ]);
 
 /**
@@ -91,13 +98,18 @@ const ALL_FLAGS = Object.freeze([
   ...THREE_OF_A_KIND_LABELS,
   'isFlushDraw',
   'isBackdoorFlushDraw',
+  'isNutFlushDraw',
+  'isNutBackdoorFlushDraw',
   'isOpenEndedStraightDraw',
   'isInsideStraightDraw',
+  'isDoubleGutshot',
   'isStraightDraw',
+  'isBackdoorStraightDraw',
   'isStraightWheel',
   'isOpenEndedStraightDrawWheel',
   'isInsideStraightDrawWheel',
   'isComboDraw',
+  'isBackdoorComboDraw',
   'isUnderPair',
   ...HOLE_CARD_CATEGORIES,
   'isHighCard'

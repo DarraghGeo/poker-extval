@@ -7,7 +7,7 @@
 
 const { MADE_HANDS, VILLAIN_DRAWS } = require('./flags');
 const { cardOf } = require('./core/tables');
-const { FLAGS, CATEGORY_BY_STRENGTH } = require('./core/bits');
+const { FLAGS, FLAG_BIT, CATEGORY_BY_STRENGTH } = require('./core/bits');
 const { Hand, setHand, classifyStrict, STREET_NAMES } = require('./core/classify');
 
 let RangeManager = null;
@@ -150,7 +150,7 @@ function classifyCombos(combos, cards, holeOrder, street) {
       setHand(x, villainHand, first[i], second[i], streetCode);
       classifyStrict(x);
       const list = [CATEGORY_BY_STRENGTH[x.strength]];
-      for (let k = 0; k < VILLAIN_DRAWS.length; k++) if (x.lo & VILLAIN_DRAW_BITS[k]) list.push(VILLAIN_DRAWS[k]);
+      for (let k = 0; k < VILLAIN_DRAWS.length; k++) if (x.hi & VILLAIN_DRAW_BITS[k]) list.push(VILLAIN_DRAWS[k]);
       categories[i] = list;
     }
     return categories[i];
@@ -180,6 +180,6 @@ function classifyCombos(combos, cards, holeOrder, street) {
 }
 
 const BLOCKED_KEYS = [...MADE_HANDS, ...VILLAIN_DRAWS, 'onBoard'];
-const VILLAIN_DRAW_BITS = VILLAIN_DRAWS.map(draw => 1 << FLAGS[draw]);
+const VILLAIN_DRAW_BITS = VILLAIN_DRAWS.map(draw => FLAG_BIT[FLAGS[draw]]);
 
 module.exports = { parseRange, classifyCombos, loadRangeManager };
