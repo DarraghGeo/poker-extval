@@ -1,6 +1,6 @@
 {
   "name": "poker-extval",
-  "version": "6.0.0-beta.2",
+  "version": "6.0.0-beta.3",
   "description": "Poker hand evaluator: made hands, draws, board-relative labels, villain range blockers, hand comparison and equity",
   "main": "evaluator.js",
   "module": "dist/poker-extval.mjs",
@@ -66,7 +66,7 @@
   },
   "dependencies": {
     "poker-bitvaljs": "^1.10.0",
-    "poker-rangeman": "^3.8.0"
+    "poker-rangeman": "^4.0.0-beta.4"
   },
   "types": "index.d.ts",
   "jest": {

@@ -47,8 +47,8 @@ Two ES-module builds ship in `dist/`:
 
 | File | Size (minified) | Use it when |
 | --- | --- | --- |
-| `dist/poker-extval.mjs` | 102 KB (49 KB) | Your page or bundler also loads poker-bitvaljs and poker-rangeman: it imports them by name, so there is one copy of each. This is what `import ... from 'poker-extval'` gives in bundlers and Node. |
-| `dist/poker-extval.bundle.mjs` | 312 KB (134 KB) | You want a single file with nothing else to set up: both packages are built in. |
+| `dist/poker-extval.mjs` | 105 KB (50 KB) | Your page or bundler also loads poker-bitvaljs and poker-rangeman: it imports them by name, so there is one copy of each. This is what `import ... from 'poker-extval'` gives in bundlers and Node. |
+| `dist/poker-extval.bundle.mjs` | 330 KB (143 KB) | You want a single file with nothing else to set up: both packages are built in. |
 
 Without a bundler, give `poker-extval.mjs` an import map for its two dependencies (both ship ES modules):
 
@@ -501,7 +501,7 @@ Apart from five new draw flags, version 6 returns exactly what 5.2.0 returns: th
 
 - **New draw flags:** `isNutFlushDraw`, `isNutBackdoorFlushDraw`, `isDoubleGutshot`, `isBackdoorStraightDraw` and `isBackdoorComboDraw` (see [Draws](#draws)). Each evaluation, its `keyCards` and `kickerCards`, and `villainRange`'s `blocked` groups have the five extra keys, placed beside the draws they refine. Code that lists every key (snapshots, `Object.keys` checks) sees them; nothing else changes.
 - **ES-module builds:** `import` gets `dist/poker-extval.mjs`, which imports poker-bitvaljs and poker-rangeman so apps share one copy; `dist/poker-extval.bundle.mjs` has both built in ([see above](#in-the-browser-without-a-bundler)). In 6.0.0-beta.1, `poker-extval.mjs` was the self-contained file; it is now `poker-extval.bundle.mjs`. The package now has an `exports` map, so only the package itself, `dist/*` and `package.json` can be imported; files under `src/` can no longer be required directly.
-- **Dependencies:** poker-bitvaljs 1.10 (which adds its own ES-module entry) and poker-rangeman 3.8.
+- **Dependencies:** poker-bitvaljs 1.10 (which adds its own ES-module entry) and poker-rangeman 4 (beta).
 - **New:** the [core API](#core-api) (`board`, `FLAGS`, `hasFlag`, `cardIndex`, `cardString`).
 - **Computed up front:** `usesHoleCards` and `evaluate()`'s `rank` are cheap now, so they are plain values rather than lazy properties. Their values are unchanged.
 - **Hidden state:** evaluation objects keep their lazy state under a non-enumerable symbol. `JSON.stringify`, `Object.keys`, spread, `structuredClone` and equality checks never see it; `Reflect.ownKeys` does.
