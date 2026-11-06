@@ -4399,3 +4399,20 @@ describe('Straight draws must beat the board\'s own straight', () => {
     expect(flags(['Qh', '7s', '2c'], 'KdJc').isBackdoorStraightDraw).toBe(true);
   });
 });
+
+describe('Core key cards and card order', () => {
+  test('should match evaluateHand for the board then the hole cards in the same order', () => {
+    const boardCards = ['Td', '6s', '3d'];
+    for (const hole of [['7h', '7s'], ['7s', '7h']]) {
+      const core = board(boardCards).classify(hole);
+      const e = Object.values(evaluateHand([...boardCards, ...hole], { holeCards: hole }))[0];
+      expect(core.keyCards()).toEqual(e.keyCards);
+      expect(core.kickerCards()).toEqual(e.kickerCards);
+    }
+  });
+
+  test('should list the first card of a pocket pair in a backdoor straight', () => {
+    expect(board(['Td', '6s', '3d']).classify('7h7s').keyCards('isBackdoorStraightDraw')).toEqual(['Td', '7h', '6s']);
+    expect(board(['Td', '6s', '3d']).classify('7s7h').keyCards('isBackdoorStraightDraw')).toEqual(['Td', '7s', '6s']);
+  });
+});

@@ -241,6 +241,8 @@ kickerCards.isFlushDraw;  // ['Ah']
 
 A straight draw's key cards are the ranks its completions use: for each out, the highest straight it makes. A-K-Q-J-9 needs a T, so its key cards are A-K-Q-J; a double gutshot such as K-J-T-9-7 uses all five. On 6 or 7 cards in strict mode, a draw's key cards can include cards outside the best five, and its kicker cards are the rest of the full hand.
 
+Cards of equal rank are listed in the order they were passed. A straight, wheel or backdoor straight takes one card per rank: where the hand has two of a rank, a hole card if one of them is, and otherwise (or with a pocket pair) the first passed.
+
 ### `evaluate` extras
 
 `evaluate()` adds these to the flat object:
@@ -423,7 +425,7 @@ for (let i = 0; i < all.count; i++) {
 | `hasFlag(lo, hi, flag)` | Whether a flag index is set |
 | `cardIndex(card)`, `cardString(n)` | Card strings to card numbers (`rank * 4 + suit`, `'2s'` = 0 ... `'Ac'` = 51) and back |
 
-`keyCards`, `kickerCards` and `usesHoleCards` are the same as `evaluateHand` gives for the board followed by the hole cards: every flag's cards without an argument, or one flag's (`r.keyCards('isFlushDraw')` is `['Ah', 'Kh', 'Jh', '9h']` above). They are worked out on the first call, so classifying stays fast when they are not used; on a batch, they classify that one combo again.
+`keyCards`, `kickerCards` and `usesHoleCards` are what `evaluateHand` gives for the board followed by the hole cards, in the order they were passed: every flag's cards without an argument, or one flag's (`r.keyCards('isFlushDraw')` is `['Ah', 'Kh', 'Jh', '9h']` above). `usesHoleCards` matches `evaluateHand` whatever the order, and so does every list's set of ranks. Cards of the same rank, though, follow the input order, as in `evaluateHand`. So to get identical lists, give `evaluateHand` the board first and the two hole cards in the same order as `classify` (`classify('7h7s')` matches `evaluateHand([...board, '7h', '7s'], { holeCards: ['7h', '7s'] })`). With a pocket pair, a straight, wheel or backdoor key card shows the first of the pair, so `'7s7h'` would list the 7♠ where `'7h7s'` lists the 7♥. They are worked out on the first call, so classifying stays fast when they are not used; on a batch, they classify that one combo again.
 
 On a turn board `classifyAll` takes about 0.15 µs per combo and `classify` about 0.4 µs.
 
