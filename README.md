@@ -34,7 +34,7 @@ npm install poker-extval
 npm install poker-extval@next   # the 6.0 prerelease
 ```
 
-Works in the browser, through any bundler (tested with esbuild, webpack and Vite) or [with none](#in-the-browser-without-a-bundler), and in Node.js 20.19+ or 22.13+. Needs poker-bitvaljs 1.9.0 or later (installed automatically). Node needs those versions because range parsing uses [poker-rangeman](https://github.com/DarraghGeo/poker-rangeman), an ES module this CommonJS package loads with `require`; on older Node everything except ranges and equity still works.
+Works in the browser, through any bundler (tested with esbuild, webpack and Vite) or [with none](#in-the-browser-without-a-bundler), and in Node.js 20.19+ or 22.13+. Needs poker-bitvaljs 1.12 or later (installed automatically). Range parsing uses [poker-rangeman](https://github.com/DarraghGeo/poker-rangeman) 4.0.0-beta.7 or later, a **peer dependency**: extval uses your app's copy, and npm 7+ installs it for you if the app has none (or run `npm install poker-rangeman@beta`). Node needs those versions because rangeman is an ES module this CommonJS package loads with `require`; on older Node everything except ranges and equity still works.
 
 ```javascript
 import { evaluate } from 'poker-extval';           // bundler / ES modules
@@ -502,7 +502,7 @@ Apart from five new draw flags, version 6 returns exactly what 5.2.0 returns: th
 - **Straight draw outs:** an out counts only when its straight beats the board's own straight with the same card (see [Draws](#draws)), so a few draws 5.2 reported, such as 4-2 on 7-9-6-8, are gone. This changes about 0.2% of random hands.
 - **New draw flags:** `isNutFlushDraw`, `isNutBackdoorFlushDraw`, `isDoubleGutshot`, `isBackdoorStraightDraw` and `isBackdoorComboDraw` (see [Draws](#draws)). Each evaluation, its `keyCards` and `kickerCards`, and `villainRange`'s `blocked` groups have the five extra keys, placed beside the draws they refine. Code that lists every key (snapshots, `Object.keys` checks) sees them; nothing else changes.
 - **ES-module builds:** `import` gets `dist/poker-extval.mjs`, which imports poker-bitvaljs and poker-rangeman so apps share one copy; `dist/poker-extval.bundle.mjs` has both built in ([see above](#in-the-browser-without-a-bundler)). In 6.0.0-beta.1, `poker-extval.mjs` was the self-contained file; it is now `poker-extval.bundle.mjs`. The package now has an `exports` map, so only the package itself, `dist/*` and `package.json` can be imported; files under `src/` can no longer be required directly.
-- **Dependencies:** poker-bitvaljs 1.10 (which adds its own ES-module entry) and poker-rangeman 4 (beta).
+- **Dependencies:** poker-bitvaljs 1.12 (with its own ES-module entry). poker-rangeman 4 (4.0.0-beta.7 or later) is now a peer dependency, so extval always shares the app's copy; npm reports a conflict for an app still on rangeman 3.
 - **New:** the [core API](#core-api) (`board`, `FLAGS`, `hasFlag`, `cardIndex`, `cardString`).
 - **Computed up front:** `usesHoleCards` and `evaluate()`'s `rank` are cheap now, so they are plain values rather than lazy properties. Their values are unchanged.
 - **Hidden state:** evaluation objects keep their lazy state under a non-enumerable symbol. `JSON.stringify`, `Object.keys`, spread, `structuredClone` and equality checks never see it; `Reflect.ownKeys` does.
