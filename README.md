@@ -211,7 +211,7 @@ Whether the strongest made hand uses a hole card (for high card: whether a hole 
 | `isComboDraw` | A flush draw and a straight draw |
 | `isBackdoorComboDraw` | A backdoor flush draw and a backdoor straight draw |
 
-With `holeCards`, a draw must be the player's: a flush draw must include a hole card, and a straight draw (backdoor ones too) must use a rank the board does not have. 2-2 on 9-8-7-6 has no straight draw, and A♦-Q♦ on K♠-7♠-2♠ has no backdoor flush draw. Paired cards count once, so 5-4 on 8-8-6 is a pair and an inside straight draw.
+With `holeCards`, a draw must be the player's: a flush draw must include a hole card, and a straight draw (backdoor ones too) must use a rank the board does not have. An out counts only when the straight it makes beats the one the board makes on its own with that card: on 7-9-6-8, 4-2 has no draw, since a 5 gives it 4-8 but the board 5-9, and J-4 has only a gutshot (the T). 2-2 on 9-8-7-6 has no straight draw, and A♦-Q♦ on K♠-7♠-2♠ has no backdoor flush draw. Paired cards count once, so 5-4 on 8-8-6 is a pair and an inside straight draw.
 
 ### Hole cards against the board
 
@@ -499,6 +499,7 @@ Reading `keyCards` or `kickerCards` adds about 5 µs to a 7-card evaluation, the
 
 Apart from five new draw flags, version 6 returns exactly what 5.2.0 returns: the same keys, values and property order, the same errors word for word, and the same lazy card lists. This was checked on hundreds of thousands of random hands, strict and non-strict, with and without hole cards, villain ranges and streets, and on 1,000 `analyzeHand` spots. The differences:
 
+- **Straight draw outs:** an out counts only when its straight beats the board's own straight with the same card (see [Draws](#draws)), so a few draws 5.2 reported, such as 4-2 on 7-9-6-8, are gone. This changes about 0.2% of random hands.
 - **New draw flags:** `isNutFlushDraw`, `isNutBackdoorFlushDraw`, `isDoubleGutshot`, `isBackdoorStraightDraw` and `isBackdoorComboDraw` (see [Draws](#draws)). Each evaluation, its `keyCards` and `kickerCards`, and `villainRange`'s `blocked` groups have the five extra keys, placed beside the draws they refine. Code that lists every key (snapshots, `Object.keys` checks) sees them; nothing else changes.
 - **ES-module builds:** `import` gets `dist/poker-extval.mjs`, which imports poker-bitvaljs and poker-rangeman so apps share one copy; `dist/poker-extval.bundle.mjs` has both built in ([see above](#in-the-browser-without-a-bundler)). In 6.0.0-beta.1, `poker-extval.mjs` was the self-contained file; it is now `poker-extval.bundle.mjs`. The package now has an `exports` map, so only the package itself, `dist/*` and `package.json` can be imported; files under `src/` can no longer be required directly.
 - **Dependencies:** poker-bitvaljs 1.10 (which adds its own ES-module entry) and poker-rangeman 4 (beta).

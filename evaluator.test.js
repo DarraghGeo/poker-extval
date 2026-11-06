@@ -2886,18 +2886,20 @@ describe('Draws must use a hole card', () => {
       expect(anyCombinationHas(['9s', '7d', '6c', '2h'], ['8h', 'Kc'], 'isOpenEndedStraightDraw')).toBe(true);
     });
 
-    test('should flag only the gutshot when the hole card extends a board open-ender to an inside draw', () => {
-      // Board: T♠ 9♥ 8♦ 7♣, Hand: 5♣ 2♦ - T987 is the board's; 9875 (needs a 6) uses the 5
+    test('should not flag a draw whose straight the board beats with the same card', () => {
+      // Board: T♠ 9♥ 8♦ 7♣, Hand: 5♣ 2♦ - T987 is the board's; a 6 gives 9875 a 5-9, but the
+      // board alone then reads 6-T, so the 5 plays no part
       const board = ['Ts', '9h', '8d', '7c'];
       const holeCards = ['5c', '2d'];
 
       expect(anyCombinationHas(board, holeCards, 'isOpenEndedStraightDraw')).toBe(false);
-      expect(anyCombinationHas(board, holeCards, 'isInsideStraightDraw')).toBe(true);
+      expect(anyCombinationHas(board, holeCards, 'isInsideStraightDraw')).toBe(false);
     });
 
     test('should report straight draw key cards that include a hole card', () => {
+      // Board: 9♥ 8♦ 7♣ 3♠, Hand: 5♣ 2♦ - a 6 gives the 5 a 5-9 the board cannot match
       const holeCards = ['5c', '2d'];
-      const drawing = evaluateAllCombinationsWithHoleCards(['Ts', '9h', '8d', '7c'], holeCards)
+      const drawing = evaluateAllCombinationsWithHoleCards(['9h', '8d', '7c', '3s'], holeCards)
         .filter(evaluation => evaluation.isInsideStraightDraw);
 
       expect(drawing.length).toBeGreaterThan(0);
@@ -3709,6 +3711,19 @@ describe('Draws match a reference by outs', () => {
       const values = new Set(cards.map(value));
       return straights.some(s => s.every(r => values.has(r))) ? 5 : 0;
     };
+    // The best straight's top card in a set of rank values (the wheel's is 5; 0 for none), only
+    // counting straights holding a rank `mine` accepts when given
+    const bestTop = (set, mine) => {
+      let top = 0;
+      for (const s of straights) {
+        if (s.every(r => set.has(r)) && (!mine || s.some(mine))) top = Math.max(top, s[0] === 14 ? 5 : s[4]);
+      }
+      return top;
+    };
+    // An out is real only when hero's straight with it, using a rank the board lacks, beats the
+    // board's own straight with it
+    const realOut = (present, boardRanks, added) => bestTop(new Set([...present, ...added]), r => present.has(r) && !boardRanks.has(r)) >
+      bestTop(new Set([...boardRanks, ...added]));
 
     let seed = 99;
     const random = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
@@ -3726,7 +3741,8 @@ describe('Draws match a reference by outs', () => {
         if (madeLevel(five) < 5) {
           for (const s of straights) {
             const have = s.filter(r => present.has(r));
-            if (have.length === 4 && have.some(r => !boardRanks.has(r))) outs.add(s.find(r => !present.has(r)));
+            const out = s.find(r => !present.has(r));
+            if (have.length === 4 && have.some(r => !boardRanks.has(r)) && realOut(present, boardRanks, [out])) outs.add(out);
           }
         }
         const suits = {};
@@ -4037,6 +4053,19 @@ describe('Strict-mode draws come from the whole hand', () => {
     for (let high = 6; high <= 14; high++) straights.push([high - 4, high - 3, high - 2, high - 1, high]);
     let seed = 23;
     const random = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    // The best straight's top card in a set of rank values (the wheel's is 5; 0 for none), only
+    // counting straights holding a rank `mine` accepts when given
+    const bestTop = (set, mine) => {
+      let top = 0;
+      for (const s of straights) {
+        if (s.every(r => set.has(r)) && (!mine || s.some(mine))) top = Math.max(top, s[0] === 14 ? 5 : s[4]);
+      }
+      return top;
+    };
+    // An out is real only when hero's straight with it, using a rank the board lacks, beats the
+    // board's own straight with it
+    const realOut = (present, boardRanks, added) => bestTop(new Set([...present, ...added]), r => present.has(r) && !boardRanks.has(r)) >
+      bestTop(new Set([...boardRanks, ...added]));
     for (let i = 0; i < 1500; i++) {
       const pool = i % 2 ? deck : deck.filter(c => 'AKQJT9876'.includes(c[0]));
       const cards = [...pool].sort(() => random() - 0.5).slice(0, 6);
@@ -4048,7 +4077,8 @@ describe('Strict-mode draws come from the whole hand', () => {
       const outs = new Set();
       for (const s of straights) {
         const have = s.filter(r => present.has(r));
-        if (have.length === 4 && have.some(r => !boardRanks.has(r))) outs.add(s.find(r => !present.has(r)));
+        const out = s.find(r => !present.has(r));
+        if (have.length === 4 && have.some(r => !boardRanks.has(r)) && realOut(present, boardRanks, [out])) outs.add(out);
       }
       const suits = {};
       cards.forEach(c => { suits[c[1]] = (suits[c[1]] || 0) + 1; });
@@ -4273,7 +4303,15 @@ describe('Nut flush draws, double gutshots and backdoor straight draws', () => {
     for (let high = 6; high <= 14; high++) windows.push([high - 4, high - 3, high - 2, high - 1, high]);
     // Ranks with the Ace also low, for straights
     const ranksOf = cards => { const r = new Set(cards.map(value)); if (r.has(14)) r.add(1); return r; };
-    const contains = (ranks, w) => w.every(r => ranks.has(r === 14 && w[0] === 14 ? 14 : r) || (r === 14 && ranks.has(14)));
+    // A runout is real only when hero's straight with it, using a rank the board lacks, beats the
+    // board's own straight with it (rank values 2-14 here, the Ace 14 in the wheel too)
+    const bestTop = (set, mine) => {
+      let top = 0;
+      for (const w of windows) if (w.every(r => set.has(r)) && (!mine || w.some(mine))) top = Math.max(top, w[0] === 14 ? 5 : w[4]);
+      return top;
+    };
+    const realOut = (handRanks, boardRanks, added) => bestTop(new Set([...handRanks, ...added]), r => handRanks.has(r) && !boardRanks.has(r)) >
+      bestTop(new Set([...boardRanks, ...added]));
     let seed = 61;
     const random = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
     let seen = { nut: 0, gut: 0, back: 0 };
@@ -4285,6 +4323,8 @@ describe('Nut flush draws, double gutshots and backdoor straight draws', () => {
       const e = flop(board, hole);
       const have = ranksOf(cards);
       const boardRanks = new Set(board.map(value));
+      const handRanks = new Set(cards.map(value));
+      const high = r => (r === 1 ? 14 : r);
       const mine = w => w.some(r => have.has(r) && !hole.every(c => value(c) !== (r === 1 ? 14 : r)) && !boardRanks.has(r === 1 ? 14 : r));
 
       // Nut flush draw: the best card of the suit not on the board is a hole card
@@ -4302,7 +4342,8 @@ describe('Nut flush draws, double gutshots and backdoor straight draws', () => {
       const fourInARow = [];
       for (let low = 1; low <= 11; low++) {
         const run = [low, low + 1, low + 2, low + 3];
-        if (run.every(r => have.has(r)) && low - 1 >= 1 && low + 4 <= 14 && !have.has(low - 1) && !have.has(low + 4) && mine(run)) fourInARow.push(run);
+        if (run.every(r => have.has(r)) && low - 1 >= 1 && low + 4 <= 14 && !have.has(low - 1) && !have.has(low + 4) && mine(run) &&
+            realOut(handRanks, boardRanks, [high(low - 1)]) && realOut(handRanks, boardRanks, [high(low + 4)])) fourInARow.push(run);
       }
       expect({ cards, gut: e.isDoubleGutshot }).toEqual({ cards, gut: e.isOpenEndedStraightDraw && fourInARow.length === 0 });
       if (e.isDoubleGutshot) seen.gut++;
@@ -4313,7 +4354,8 @@ describe('Nut flush draws, double gutshots and backdoor straight draws', () => {
       if (!made && !e.isStraightDraw) {
         for (const w of windows) {
           const present = w.filter(r => have.has(r === 14 && w[0] === 14 ? 14 : r) || (r === 14 && have.has(14)));
-          if (present.length === 3 && present.some(r => !boardRanks.has(r))) backdoor = true;
+          if (present.length === 3 && present.some(r => !boardRanks.has(r)) &&
+              realOut(handRanks, boardRanks, w.filter(r => !present.includes(r)))) backdoor = true;
         }
       }
       expect({ cards, back: e.isBackdoorStraightDraw }).toEqual({ cards, back: backdoor });
@@ -4323,5 +4365,37 @@ describe('Nut flush draws, double gutshots and backdoor straight draws', () => {
     expect(seen.nut).toBeGreaterThan(20);
     expect(seen.gut).toBeGreaterThan(5);
     expect(seen.back).toBeGreaterThan(100);
+  });
+});
+
+describe('Straight draws must beat the board\'s own straight', () => {
+  const flags = (b, h) => {
+    const c = board(b).classify(h);
+    const e = Object.values(evaluateHand([...b, ...h.match(/../g)], { holeCards: h.match(/../g) }))[0];
+    const names = ['isStraightDraw', 'isOpenEndedStraightDraw', 'isInsideStraightDraw', 'isDoubleGutshot', 'isBackdoorStraightDraw'];
+    // The core and the evaluation agree
+    for (const name of names) expect(c.is(name)).toBe(e[name]);
+    return { ...Object.fromEntries(names.map(n => [n, e[n]])), keyCards: e.keyCards.isStraightDraw };
+  };
+
+  test('should not count an out whose straight the board beats with the same card', () => {
+    // A 5 gives 4-8, but the board alone then reads 5-9
+    expect(flags(['7c', '9d', '6s', '8h'], '4c2c')).toMatchObject({ isStraightDraw: false, isInsideStraightDraw: false });
+    // Only the T is real (7-J over the board's 6-T); the 5 is the same fake out
+    expect(flags(['7c', '9d', '6s', '8h'], 'Jc4c')).toMatchObject({
+      isStraightDraw: true, isInsideStraightDraw: true, isOpenEndedStraightDraw: false, isDoubleGutshot: false, keyCards: ['Jc', '9d', '8h', '7c']
+    });
+    // A 7 gives 7-J over the board's 5-9, and a Q gives 8-Q
+    expect(flags(['9h', '8d', '6h', '5h'], 'JcTc')).toMatchObject({ isOpenEndedStraightDraw: true });
+    expect(flags(['7c', '9d', '6s', '8h'], '3c2c')).toMatchObject({ isStraightDraw: false });
+  });
+
+  test('should not count backdoor runouts whose straight the board beats', () => {
+    // A 5 and a 6 give the board 4-8, above hero's 3-7
+    expect(flags(['7c', '8d', '4h'], '3s8h').isBackdoorStraightDraw).toBe(false);
+    // A 2 and a 5 give the board 2-6, above hero's wheel
+    expect(flags(['6h', '3d', '4c'], 'Ad4h').isBackdoorStraightDraw).toBe(false);
+    // K-J on Q-7-2 still runs out to a straight of its own
+    expect(flags(['Qh', '7s', '2c'], 'KdJc').isBackdoorStraightDraw).toBe(true);
   });
 });

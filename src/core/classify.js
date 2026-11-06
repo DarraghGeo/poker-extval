@@ -14,6 +14,7 @@
 const { BitVal } = require('../deps');
 const { POP, HIGH, LOW, STRAIGHT5, WINDOWS, DRAW_WINDOWS, BACKDOOR_WINDOWS, STRAIGHT_WINDOW, WHEEL, ROYAL } = require('./tables');
 const B = require('./bits');
+const { beatsBoard } = require('./straights');
 
 let bitval = null;
 /** poker-bitvaljs, created on first use. */
@@ -185,7 +186,8 @@ function position(x, r) {
 
 /**
  * Straight draw bits for a rank mask, by outs: two or more out ranks is open-ended, one inside.
- * With hole cards a completion only counts when its four ranks include one the board lacks.
+ * With hole cards a completion only counts when its four ranks include one the board lacks, and
+ * its straight beats the one the board makes with the same card (see src/core/straights.js).
  * Open-ended draws whose completions never share their four ranks are double gutshots
  * (9-7-6-5-3), unlike four in a row (9-8-7-6). With no straight draw, three ranks of a straight
  * (by the same hole card rule) are a backdoor straight draw.
@@ -202,7 +204,7 @@ function straightDrawBits(x, m) {
   for (; windows; windows &= windows - 1) {
     const w = 31 - Math.clz32(windows & -windows);
     const present = m & WINDOWS[w];
-    if (hasHole && (present & ~board) === 0) continue;
+    if (hasHole && ((present & ~board) === 0 || !beatsBoard(m, board, WINDOWS[w] & ~present))) continue;
     outs |= WINDOWS[w] & ~present;
     if (w === 0) wheel = true;
     // Only neighbouring windows can hold the same four ranks
@@ -214,9 +216,11 @@ function straightDrawBits(x, m) {
     if (POP[outs] >= 2) return B.STRAIGHT_DRAW | B.OPEN_ENDED | (wheel ? B.OPEN_ENDED_WHEEL : 0) | (shared ? 0 : B.DOUBLE_GUTSHOT);
     return B.STRAIGHT_DRAW | B.INSIDE | (wheel ? B.INSIDE_WHEEL : 0);
   }
+  // Backdoors need two more cards: only on the flop (the street rules would drop them anyway)
+  if (x.street !== FLOP) return 0;
   for (let backdoors = BACKDOOR_WINDOWS[m]; backdoors; backdoors &= backdoors - 1) {
     const w = 31 - Math.clz32(backdoors & -backdoors);
-    if (!hasHole || (m & WINDOWS[w] & ~board) !== 0) return B.BACKDOOR_STRAIGHT;
+    if (!hasHole || ((m & WINDOWS[w] & ~board) !== 0 && beatsBoard(m, board, WINDOWS[w] & ~m))) return B.BACKDOOR_STRAIGHT;
   }
   return 0;
 }

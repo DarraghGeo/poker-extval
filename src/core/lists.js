@@ -16,6 +16,7 @@
 const { ALL_FLAGS, DRAWS, HOLE_CARD_CATEGORIES } = require('../flags');
 const { DRAW_WINDOWS, BACKDOOR_WINDOWS, WINDOWS, HIGH, WHEEL } = require('./tables');
 const { FLAGS, hasFlag } = require('./bits');
+const { beatsBoard } = require('./straights');
 
 const DRAW_SET = new Set(DRAWS);
 const HOLE_SET = new Set(HOLE_CARD_CATEGORIES);
@@ -76,7 +77,7 @@ function straightDrawCards(x, std, wheelOnly) {
   for (let w = 0; w < 10; w++) {
     if (!((DRAW_WINDOWS[mask] >> w) & 1)) continue;
     const present = mask & WINDOWS[w];
-    if (x.hasHole && (present & ~x.boardMask) === 0) continue;
+    if (x.hasHole && ((present & ~x.boardMask) === 0 || !beatsBoard(mask, x.boardMask, WINDOWS[w] & ~present))) continue;
     if (wheelOnly && w !== 0) continue;
     byOut.set(HIGH[WINDOWS[w] & ~present], w);
   }
@@ -122,7 +123,7 @@ function backdoorStraightCards(x, std) {
   for (let w = 9; w >= 0; w--) {
     if (!((BACKDOOR_WINDOWS[mask] >> w) & 1)) continue;
     const present = mask & WINDOWS[w];
-    if (x.hasHole && (present & ~x.boardMask) === 0) continue;
+    if (x.hasHole && ((present & ~x.boardMask) === 0 || !beatsBoard(mask, x.boardMask, WINDOWS[w] & ~mask))) continue;
     return oneCardPerRank(x, std, present, w === 0);
   }
   return [];
