@@ -1,5 +1,5 @@
 // Compile-time checks for index.d.ts: run with `npm run test:types`. Nothing here is executed.
-import evaluateHand2, { evaluateHand, evaluate, analyzeHand, hand, HandView, MatchupView, HandAnalysis, classifyRange, parseRange, compareHands, equity, HandEvaluator, Evaluation, board, Board, Classification, BatchClassification, FLAGS, hasFlag, cardIndex, cardString } from '..';
+import evaluateHand2, { evaluateHand, evaluate, analyzeHand, hand, HandView, MatchupView, HandAnalysis, classifyRange, parseRange, compareHands, equity, HandEvaluator, Evaluation, board, Board, Classification, BatchClassification, FLAGS, hasFlag, cardIndex, cardString, Card } from '..';
 const r = evaluateHand(['As', 'Kd', '8c', '3h', 'Kh'], { holeCards: ['As', 'Kh'], street: 'flop' });
 const e: Evaluation = Object.values(r)[0];
 const top: boolean = e.isTopPair;
@@ -49,3 +49,8 @@ const name: string = cardString(51);
 one.is('isNothing');
 const nut: boolean = e.isNutFlushDraw || e.isBackdoorStraightDraw || e.isDoubleGutshot || e.isBackdoorComboDraw || e.isNutBackdoorFlushDraw;
 const villainBackdoors: string[] = matchup.blockers().heroBlocks.blocked.isBackdoorStraightDraw;
+const fdCards: Card[] = one.keyCards('isFlushDraw');
+const allKickers: Card[] = one.kickerCards().isHighCard;
+const usesHole: boolean = one.usesHoleCards();
+const batchKeys: Card[] | null = batch.keyCards(0, FLAGS.isFlushDraw);
+const batchUses: boolean | null = batch.usesHoleCards(0);

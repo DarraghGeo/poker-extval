@@ -10,6 +10,7 @@
 const { cardOf, CARD_NAMES, RANK_CODE, SUIT_CODE } = require('./tables');
 const { FLAGS, hasFlag, flagsObject, CATEGORY_BY_STRENGTH } = require('./bits');
 const { Hand, setHand, classifyStrict, scoreOf, STREET_NAMES } = require('./classify');
+const { cardLists, usesHoleCards } = require('./lists');
 const { ALL_FLAGS } = require('../flags');
 
 const FLAG_NAMES = ALL_FLAGS;
@@ -30,10 +31,10 @@ function toCard(card) {
 
 /** One classified combo. */
 class Classification {
-  constructor(lo, hi, strength, score, five) {
-    /** Flags, low word (flags 0-31 of ALL_FLAGS). */
+  constructor(lo, hi, strength, score, five, source) {
+    /** Made hands, position labels and hole card categories (read with hasFlag). */
     this.lo = lo;
-    /** Flags, high word (flags 32-36). */
+    /** Draws (read with hasFlag). */
     this.hi = hi;
     /** Made hand strength: 10 royal flush ... 1 high card. */
     this.strength = strength;
@@ -41,6 +42,8 @@ class Classification {
     this.score = score;
     /** The best five cards, high to low. */
     this.five = five;
+    /** What keyCards and kickerCards need: the hand (board then hole cards), street, the five. */
+    this._source = source;
   }
 
   /** The made hand, e.g. 'isFlush'. */
@@ -61,6 +64,100 @@ class Classification {
   /** Every flag as an object, in evaluateHand's order. */
   flags() {
     return flagsObject(this.lo, this.hi);
+  }
+
+  /**
+   * The key cards of one flag, or of every flag: evaluateHand's keyCards, worked out on the first
+   * call and remembered.
+   *
+   * @param {string|number} [flag] - A flag name or index; leave out for every flag
+   * @returns {string[]|Object<string, string[]>}
+   */
+  keyCards(flag) {
+    const { keyCards } = this._lists();
+    return flag === undefined ? keyCards : keyCards[FLAG_NAMES[flagIndex(flag)]];
+  }
+
+  /**
+   * The kicker cards of one flag, or of every flag: evaluateHand's kickerCards.
+   *
+   * @param {string|number} [flag] - A flag name or index; leave out for every flag
+   * @returns {string[]|Object<string, string[]>}
+   */
+  kickerCards(flag) {
+    const { kickerCards } = this._lists();
+    return flag === undefined ? kickerCards : kickerCards[FLAG_NAMES[flagIndex(flag)]];
+  }
+
+  /** Whether the made hand uses a hole card (evaluateHand's usesHoleCards). */
+  usesHoleCards() {
+    const { x, p } = this._hand();
+    return usesHoleCards(x, p[0], p[1], p[2], p[3], p[4], this.strength);
+  }
+
+  /** The public fields only, for JSON. */
+  toJSON() {
+    return { lo: this.lo, hi: this.hi, strength: this.strength, score: this.score, five: this.five, category: this.category };
+  }
+
+  _hand() {
+    const source = this._source;
+    if (!source.x) {
+      const n = source.cards.length;
+      source.x = setHand(new Hand(), source.cards, source.cards[n - 2], source.cards[n - 1], source.street);
+    }
+    return source;
+  }
+
+  _lists() {
+    const source = this._hand();
+    if (!source.lists) {
+      const n = source.cards.length;
+      source.lists = cardLists(source.x, source.cards.map(c => CARD_NAMES[c]), [n - 2, n - 1], source.p, this.lo, this.hi, source.whole);
+    }
+    return source.lists;
+  }
+}
+
+/** Many combos classified at once: typed arrays indexed like the combos. */
+class BatchClassification {
+  constructor(board, combos, count, lo, hi, strength, score, blocked) {
+    this.count = count;
+    this.lo = lo;
+    this.hi = hi;
+    this.strength = strength;
+    this.score = score;
+    this.blocked = blocked;
+    // Kept for the card lists, out of sight of equality checks and JSON
+    Object.defineProperty(this, '_board', { value: board });
+    Object.defineProperty(this, '_combos', { value: combos });
+  }
+
+  /** Combo i classified on its own (null when blocked). */
+  _one(i) {
+    if (!(i >= 0 && i < this.count)) throw new Error(`No combo at index ${i}`);
+    if (this.blocked[i]) return null;
+    const combos = this._combos;
+    const hole = typeof combos[0] === 'number' ? [combos[2 * i], combos[2 * i + 1]] : combos[i];
+    return this._board.classify(hole);
+  }
+
+  /** Combo i's key cards (one flag, or every flag), or null when it is blocked. */
+  keyCards(i, flag) {
+    const one = this._one(i);
+    return one && one.keyCards(flag);
+  }
+
+  /** Combo i's kicker cards (one flag, or every flag), or null when it is blocked. */
+  kickerCards(i, flag) {
+    const one = this._one(i);
+    return one && one.kickerCards(flag);
+  }
+
+  /** Whether combo i's made hand uses one of its cards, or null when it is blocked. */
+  usesHoleCards(i) {
+    const one = this._one(i);
+    return one && one.usesHoleCards();
   }
 }
 
@@ -126,8 +223,10 @@ class Board {
     if (c0 < 0 || c1 < 0) throw new Error(`Invalid hole cards: ${JSON.stringify(hole)}`);
     if (c0 === c1 || this._used[c0] || this._used[c1]) throw new Error(`Hole cards clash with the board or each other: ${JSON.stringify(hole)}`);
     const x = this._run(c0, c1);
-    const order = [x.p0, x.p1, x.p2, x.p3, x.p4].map(p => x.cards[p]).sort((a, b) => (b >> 2) - (a >> 2));
-    return new Classification(x.lo, x.hi, x.strength, scoreOf(x), order.map(c => CARD_NAMES[c]));
+    const p = [x.p0, x.p1, x.p2, x.p3, x.p4];
+    const order = p.map(i => x.cards[i]).sort((a, b) => (b >> 2) - (a >> 2));
+    const source = { cards: x.cards.slice(), street: this._streetCode, p, whole: x.whole, x: null, lists: null };
+    return new Classification(x.lo, x.hi, x.strength, scoreOf(x), order.map(c => CARD_NAMES[c]), source);
   }
 
   /**
@@ -173,7 +272,7 @@ class Board {
       strength[i] = x.strength;
       score[i] = scoreOf(x);
     }
-    return { count, lo, hi, strength, score, blocked };
+    return new BatchClassification(this, combos, count, lo, hi, strength, score, blocked);
   }
 }
 
@@ -202,4 +301,4 @@ function cardString(card) {
   return CARD_NAMES[card];
 }
 
-module.exports = { board, Board, Classification, cardIndex, cardString, flagIndex };
+module.exports = { board, Board, Classification, BatchClassification, cardIndex, cardString, flagIndex };

@@ -11,7 +11,7 @@
  * @copyright Copyright (c) 2025 Darragh Geoghegan
  */
 
-const BitVal = require('poker-bitvaljs');
+const { BitVal } = require('../deps');
 const { POP, HIGH, LOW, STRAIGHT5, WINDOWS, DRAW_WINDOWS, BACKDOOR_WINDOWS, STRAIGHT_WINDOW, WHEEL, ROYAL } = require('./tables');
 const B = require('./bits');
 

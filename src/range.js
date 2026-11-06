@@ -9,26 +9,7 @@ const { MADE_HANDS, VILLAIN_DRAWS } = require('./flags');
 const { cardOf } = require('./core/tables');
 const { FLAGS, FLAG_BIT, CATEGORY_BY_STRENGTH } = require('./core/bits');
 const { Hand, setHand, classifyStrict, STREET_NAMES } = require('./core/classify');
-
-let RangeManager = null;
-
-/**
- * Loads poker-rangeman on first use. It is an ES module: bundlers include it as usual, and Node
- * 20.19+ / 22.13+ can require() it.
- *
- * @returns {Function} The RangeManager class
- * @throws {Error} On a Node version that cannot require() ES modules
- */
-function loadRangeManager() {
-  if (!RangeManager) {
-    try {
-      ({ RangeManager } = require('poker-rangeman'));
-    } catch (error) {
-      throw new Error(`Ranges need a bundler or Node.js 20.19+ / 22.13+ to load poker-rangeman: ${error.message}`);
-    }
-  }
-  return RangeManager;
-}
+const { loadRangeManager } = require('./deps');
 
 /**
  * Expands a range into exact two-card combos, in input order and without duplicates.

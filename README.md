@@ -43,19 +43,39 @@ const { evaluate } = require('poker-extval');      // CommonJS
 
 ### In the browser without a bundler
 
-`dist/poker-extval.mjs` is a self-contained ES module, with poker-bitvaljs and poker-rangeman built in, for pages that load plain ES modules. Serve it with your files, or load it from a CDN:
+Two ES-module builds ship in `dist/`:
+
+| File | Size (minified) | Use it when |
+| --- | --- | --- |
+| `dist/poker-extval.mjs` | 102 KB (49 KB) | Your page or bundler also loads poker-bitvaljs and poker-rangeman: it imports them by name, so there is one copy of each. This is what `import ... from 'poker-extval'` gives in bundlers and Node. |
+| `dist/poker-extval.bundle.mjs` | 312 KB (134 KB) | You want a single file with nothing else to set up: both packages are built in. |
+
+Without a bundler, give `poker-extval.mjs` an import map for its two dependencies (both ship ES modules):
 
 ```html
+<script type="importmap">
+  { "imports": {
+      "poker-bitvaljs": "/node_modules/poker-bitvaljs/bitval.mjs",
+      "poker-rangeman": "/node_modules/poker-rangeman/src/rangeManager.js"
+  } }
+</script>
 <script type="module">
-  import { evaluate, board } from './poker-extval.mjs';
-  // or: from 'https://cdn.jsdelivr.net/npm/poker-extval@next/dist/poker-extval.mjs'
+  import { evaluate, board } from '/node_modules/poker-extval/dist/poker-extval.mjs';
 
   const result = evaluate(['4h', '9h', '7h', 'Ah', 'Js'], { holeCards: ['Ah', 'Js'] });
   console.log(result.isNutFlushDraw); // true
 </script>
 ```
 
-`dist/poker-extval.min.mjs` is the same, minified (about 105 KB). In Node and in bundlers, `import ... from 'poker-extval'` uses this build too; `require` uses the CommonJS one.
+Or import the self-contained file with no import map, from your files or a CDN:
+
+```html
+<script type="module">
+  import { evaluate } from 'https://cdn.jsdelivr.net/npm/poker-extval@next/dist/poker-extval.bundle.mjs';
+</script>
+```
+
+`require('poker-extval')` uses the CommonJS build, as before.
 
 ## Quick start
 
@@ -397,11 +417,13 @@ for (let i = 0; i < all.count; i++) {
 | Export | Meaning |
 | --- | --- |
 | `board(cards, { street })` | A board of 3 to 5 cards (strings or card numbers) |
-| `.classify(hole)` | `{ lo, hi, strength, score, five, category, is(flag), flags() }` |
-| `.classifyAll(combos)` | `{ count, lo, hi, strength, score, blocked }`, each a typed array indexed like `combos`; combos are `'AhKd'` strings or card numbers in pairs |
+| `.classify(hole)` | `{ lo, hi, strength, score, five, category, is(flag), flags(), keyCards(flag?), kickerCards(flag?), usesHoleCards() }` |
+| `.classifyAll(combos)` | `{ count, lo, hi, strength, score, blocked }`, each a typed array indexed like `combos`; combos are `'AhKd'` strings or card numbers in pairs. `keyCards(i, flag?)`, `kickerCards(i, flag?)` and `usesHoleCards(i)` give combo `i`'s (`null` if blocked) |
 | `FLAGS` | Flag index by name, in the evaluation's order. Read a flag with `hasFlag(lo, hi, FLAGS.name)`: `lo` holds the made hands, position labels and hole card categories, `hi` every draw (so `hi === 0` means no draws) |
 | `hasFlag(lo, hi, flag)` | Whether a flag index is set |
 | `cardIndex(card)`, `cardString(n)` | Card strings to card numbers (`rank * 4 + suit`, `'2s'` = 0 ... `'Ac'` = 51) and back |
+
+`keyCards`, `kickerCards` and `usesHoleCards` are the same as `evaluateHand` gives for the board followed by the hole cards: every flag's cards without an argument, or one flag's (`r.keyCards('isFlushDraw')` is `['Ah', 'Kh', 'Jh', '9h']` above). They are worked out on the first call, so classifying stays fast when they are not used; on a batch, they classify that one combo again.
 
 On a turn board `classifyAll` takes about 0.15 µs per combo and `classify` about 0.4 µs.
 
@@ -478,7 +500,8 @@ Reading `keyCards` or `kickerCards` adds about 5 µs to a 7-card evaluation, the
 Apart from five new draw flags, version 6 returns exactly what 5.2.0 returns: the same keys, values and property order, the same errors word for word, and the same lazy card lists. This was checked on hundreds of thousands of random hands, strict and non-strict, with and without hole cards, villain ranges and streets, and on 1,000 `analyzeHand` spots. The differences:
 
 - **New draw flags:** `isNutFlushDraw`, `isNutBackdoorFlushDraw`, `isDoubleGutshot`, `isBackdoorStraightDraw` and `isBackdoorComboDraw` (see [Draws](#draws)). Each evaluation, its `keyCards` and `kickerCards`, and `villainRange`'s `blocked` groups have the five extra keys, placed beside the draws they refine. Code that lists every key (snapshots, `Object.keys` checks) sees them; nothing else changes.
-- **ES-module build:** `import` gets `dist/poker-extval.mjs` ([see above](#in-the-browser-without-a-bundler)). The package now has an `exports` map, so only the package itself, `dist/*` and `package.json` can be imported; files under `src/` can no longer be required directly.
+- **ES-module builds:** `import` gets `dist/poker-extval.mjs`, which imports poker-bitvaljs and poker-rangeman so apps share one copy; `dist/poker-extval.bundle.mjs` has both built in ([see above](#in-the-browser-without-a-bundler)). In 6.0.0-beta.1, `poker-extval.mjs` was the self-contained file; it is now `poker-extval.bundle.mjs`. The package now has an `exports` map, so only the package itself, `dist/*` and `package.json` can be imported; files under `src/` can no longer be required directly.
+- **Dependencies:** poker-bitvaljs 1.10 (which adds its own ES-module entry) and poker-rangeman 3.8.
 - **New:** the [core API](#core-api) (`board`, `FLAGS`, `hasFlag`, `cardIndex`, `cardString`).
 - **Computed up front:** `usesHoleCards` and `evaluate()`'s `rank` are cheap now, so they are plain values rather than lazy properties. Their values are unchanged.
 - **Hidden state:** evaluation objects keep their lazy state under a non-enumerable symbol. `JSON.stringify`, `Object.keys`, spread, `structuredClone` and equality checks never see it; `Reflect.ownKeys` does.

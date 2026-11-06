@@ -1,7 +1,9 @@
-// Browser test: runs test/browser-checks.js in headless Chromium two ways, and compares the
+// Browser test: runs test/browser-checks.js in headless Chromium three ways, and compares the
 // results with the same checks run in Node:
 // - bundled: the package bundled for the browser with esbuild, as an app would use it;
-// - no bundler: dist/poker-extval.mjs imported by a plain <script type="module"> page.
+// - import map: dist/poker-extval.mjs, which imports poker-bitvaljs and poker-rangeman by name,
+//   in a plain <script type="module"> page whose import map points at those packages;
+// - self-contained: dist/poker-extval.bundle.mjs in a plain page, with no import map.
 // Run with `npm run test:browser`, which builds dist/ first (needs a Playwright Chromium:
 // `npx playwright-core install chromium`).
 const fs = require('fs');
@@ -40,29 +42,45 @@ async function main() {
     assert.deepStrictEqual(bundled, expected);
     console.log(`Browser test passed (bundled): ${Object.keys(expected).length} checks match Node in ${browser.version()}`);
 
-    const noBundler = await runPage(browser, async page => {
-      // Serve the package's files from a made-up origin, so the page imports them by URL
-      const origin = 'http://extval.test';
-      const checks = `const module = {};\n${fs.readFileSync(path.join(__dirname, 'browser-checks.js'), 'utf8')}\nexport default module.exports;`;
-      const html = `<!doctype html><html><body><script type="module">
-        import * as lib from './dist/poker-extval.mjs';
-        import checks from './checks.mjs';
-        checks(lib).then(r => { window.__results = r; }, e => { window.__results = { fatal: e.message }; });
-      </script></body></html>`;
-      await page.route(`${origin}/**`, route => {
-        const file = new URL(route.request().url()).pathname;
-        if (file === '/') return route.fulfill({ contentType: 'text/html', body: html });
-        if (file === '/checks.mjs') return route.fulfill({ contentType: 'text/javascript', body: checks });
-        if (file === '/dist/poker-extval.mjs') return route.fulfill({ contentType: 'text/javascript', body: fs.readFileSync(path.join(root, 'dist/poker-extval.mjs'), 'utf8') });
-        return route.fulfill({ status: 404, body: 'Not found' });
-      });
-      await page.goto(`${origin}/`);
-    }, false);
-    assert.deepStrictEqual(noBundler, expected);
-    console.log(`Browser test passed (no bundler, dist/poker-extval.mjs): ${Object.keys(expected).length} checks match Node`);
+    const withImportMap = await runPage(browser, page => servePage(page, 'poker-extval.mjs', {
+      'poker-bitvaljs': '/node_modules/poker-bitvaljs/bitval.mjs',
+      'poker-rangeman': '/node_modules/poker-rangeman/src/rangeManager.js'
+    }), false);
+    assert.deepStrictEqual(withImportMap, expected);
+    console.log(`Browser test passed (import map, dist/poker-extval.mjs): ${Object.keys(expected).length} checks match Node`);
+
+    const selfContained = await runPage(browser, page => servePage(page, 'poker-extval.bundle.mjs', null), false);
+    assert.deepStrictEqual(selfContained, expected);
+    console.log(`Browser test passed (no import map, dist/poker-extval.bundle.mjs): ${Object.keys(expected).length} checks match Node`);
   } finally {
     await browser.close();
   }
+}
+
+/**
+ * Serves a page that imports dist/<file> and runs the checks, from a made-up origin, with the
+ * package's own files (dist/, node_modules/) behind it and an optional import map.
+ */
+async function servePage(page, file, importMap) {
+  const origin = 'http://extval.test';
+  const checks = `const module = {};\n${fs.readFileSync(path.join(__dirname, 'browser-checks.js'), 'utf8')}\nexport default module.exports;`;
+  const map = importMap ? `<script type="importmap">${JSON.stringify({ imports: importMap })}</script>` : '';
+  const html = `<!doctype html><html><head>${map}</head><body><script type="module">
+    import * as lib from './dist/${file}';
+    import checks from './checks.mjs';
+    checks(lib).then(r => { window.__results = r; }, e => { window.__results = { fatal: e.message }; });
+  </script></body></html>`;
+  await page.route(`${origin}/**`, route => {
+    const url = new URL(route.request().url()).pathname;
+    if (url === '/') return route.fulfill({ contentType: 'text/html', body: html });
+    if (url === '/checks.mjs') return route.fulfill({ contentType: 'text/javascript', body: checks });
+    const local = path.join(root, decodeURIComponent(url));
+    if ((url.startsWith('/dist/') || url.startsWith('/node_modules/')) && local.startsWith(root) && fs.existsSync(local)) {
+      return route.fulfill({ contentType: 'text/javascript', body: fs.readFileSync(local, 'utf8') });
+    }
+    return route.fulfill({ status: 404, body: 'Not found' });
+  });
+  await page.goto(`${origin}/`);
 }
 
 /** Opens a page, loads the checks with `load`, and returns their results. */

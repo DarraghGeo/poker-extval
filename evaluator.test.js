@@ -4116,6 +4116,11 @@ describe('Core API', () => {
       expect(result.strength).toBe(expected.strength);
       expect(result.score).toBe(score.scoreCards([...boardCards, ...hole]));
       for (const flag of ALL_FLAGS) expect(result.is(flag)).toBe(expected[flag]);
+      expect(result.keyCards()).toEqual(expected.keyCards);
+      expect(result.kickerCards()).toEqual(expected.kickerCards);
+      expect(result.usesHoleCards()).toBe(expected.usesHoleCards);
+      expect(result.keyCards('isPair')).toEqual(expected.keyCards.isPair);
+      expect(result.kickerCards(FLAGS.isHighCard)).toEqual(expected.kickerCards.isHighCard);
     }
   });
 
@@ -4124,6 +4129,8 @@ describe('Core API', () => {
     const a = b.classify('AhJh');
     expect(b.classify(['Ah', 'Jh'])).toEqual(a);
     expect(b.classify([cardIndex('Ah'), cardIndex('Jh')])).toEqual(a);
+    expect(a.keyCards('isFlushDraw')).toEqual(['Ah', 'Kh', 'Jh', '9h']);
+    expect(JSON.parse(JSON.stringify(a))).toEqual({ lo: a.lo, hi: a.hi, strength: 1, score: a.score, five: a.five, category: 'isHighCard' });
     expect(a.is('isFlushDraw')).toBe(true);
     expect(a.is(FLAGS.isOvercard)).toBe(true);
     expect(a.category).toBe('isHighCard');
@@ -4144,7 +4151,20 @@ describe('Core API', () => {
       });
       // The same combos as card numbers in pairs
       const numeric = Int8Array.from(wide.flatMap(c => [cardIndex(c.slice(0, 2)), cardIndex(c.slice(2))]));
-      expect(b.classifyAll(numeric)).toEqual(all);
+      const fromNumbers = b.classifyAll(numeric);
+      expect(fromNumbers).toEqual(all);
+      // Card lists on demand, combo by combo
+      for (const i of [0, 7, 100, 500, wide.length - 1]) {
+        if (all.blocked[i]) {
+          expect([all.keyCards(i), all.kickerCards(i), all.usesHoleCards(i)]).toEqual([null, null, null]);
+        } else {
+          const one = b.classify(wide[i]);
+          expect(all.keyCards(i)).toEqual(one.keyCards());
+          expect(fromNumbers.kickerCards(i, 'isHighCard')).toEqual(one.kickerCards('isHighCard'));
+          expect(all.usesHoleCards(i)).toBe(one.usesHoleCards());
+        }
+      }
+      expect(() => all.keyCards(wide.length)).toThrow(`No combo at index ${wide.length}`);
     }
   });
 

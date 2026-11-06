@@ -345,6 +345,14 @@ export interface Classification {
   is(flag: Flag | number): boolean;
   /** Every flag, as evaluateHand gives them. */
   flags(): { [F in Flag]: boolean };
+  /** evaluateHand's keyCards for the hand (board then hole cards): every flag, or one. */
+  keyCards(): { [F in Flag]: Card[] };
+  keyCards(flag: Flag | number): Card[];
+  /** evaluateHand's kickerCards: every flag, or one. */
+  kickerCards(): { [F in Flag]: Card[] };
+  kickerCards(flag: Flag | number): Card[];
+  /** Whether the made hand uses a hole card. */
+  usesHoleCards(): boolean;
 }
 
 /** Many combos classified at once by Board.classifyAll; index i is combo i. */
@@ -356,6 +364,14 @@ export interface BatchClassification {
   readonly score: Int32Array;
   /** 1 where the combo shares a card with the board (its other entries are 0). */
   readonly blocked: Uint8Array;
+  /** Combo i's key cards (every flag, or one), worked out on demand; null when blocked. */
+  keyCards(i: number): { [F in Flag]: Card[] } | null;
+  keyCards(i: number, flag: Flag | number): Card[] | null;
+  /** Combo i's kicker cards (every flag, or one); null when blocked. */
+  kickerCards(i: number): { [F in Flag]: Card[] } | null;
+  kickerCards(i: number, flag: Flag | number): Card[] | null;
+  /** Whether combo i's made hand uses one of its cards; null when blocked. */
+  usesHoleCards(i: number): boolean | null;
 }
 
 export interface BoardOptions {
